@@ -11,31 +11,6 @@ const GRB_ENV = Gurobi.Env(output_flag=0)
 
 include("lvmodel.jl")
 
-abstract type AbstractMatrixConstraintProblem end
-
-struct EnergyConstraintProblem{T} <: AbstractMatrixConstraintProblem
-    Λ::Matrix{T} # inverse interaction matrix
-    N⁰::Vector{T} # baseline biomass vector
-    m::Vector{T} # bodysize vector
-    K::Int # number of species
-    d::Vector{T} # demand vector
-    Sᵢ::T # average individual supply cap
-end
-
-mutable struct HRSampler{T <: AbstractMatrixConstraintProblem}
-    # Problem information
-    pblm::T
-    Z::Matrix{Float64} # nullspace of pblm.E
-    warmup::Vector{Vector{Float64}}
-    center::Vector{Float64}
-    n_warmup::Int
-    n_samples::Int
-    prev::Vector{Float64}
-    feas_tol::Float64
-    bounds_tol::Float64
-    feasible::Bool
-    RNG::Random.MersenneTwister
-end
 
 function warmup_sampler!(samp::HRSampler)
     b_tol= samp.bounds_tol
@@ -43,19 +18,21 @@ function warmup_sampler!(samp::HRSampler)
     N_eff = samp.pblm.Λ * samp.pblm.d + samp.pblm.N⁰
     
     # Initialize a JuMP Model with Gurobi as the solver
-    model = Model(() -> Gurobi.Optimizer(GRB_ENV))
-    set_optimizer_attribute(model, "Threads", 1)
+    model = Model(() -> Gurobi.Optimizer(GRB_ENV));
+    set_optimizer_attribute(model, "OutputFlag", 0)   # Mutes all Gurobi output
+    set_optimizer_attribute(model, "LogToConsole", 0) # Prevents logging to console
+    # set_optimizer_attribute(model, "Threads", 1)
 
     # setup the warmup problem
-    @variable(model, s[i = 1:samp.pblm.K] >= b_tol)
-    @constraint(model, samp.pblm.Λ * s .>= N_eff * (1+f_tol))
-    @constraint(model, dot(samp.pblm.m, s) <= samp.pblm.Sᵢ * samp.pblm.K* (1-b_tol)) 
+    @variable(model, s[i = 1:samp.pblm.K] >= b_tol);
+    @constraint(model, samp.pblm.Λ * s .>= N_eff * (1+f_tol));
+    @constraint(model, dot(samp.pblm.m, s) <= samp.pblm.Sᵢ * samp.pblm.K* (1-b_tol)) ;
 
     # Warm up along each individual dimension to get the Min and Max to form a spanning set
     for sense in (MOI.MIN_SENSE, MOI.MAX_SENSE)
         for i in 1:samp.pblm.K
-            @objective(model, sense, s[i])
-            optimize!(model)
+            @objective(model, sense, s[i]);
+            optimize!(model);
             if termination_status(model) == MOI.INFEASIBLE
                 samp.feasible = false
                 return :Infeasible
@@ -66,7 +43,7 @@ function warmup_sampler!(samp::HRSampler)
         end
     end
     # Remove redundant search directions
-    unique!(samp.warmup)
+    unique!(samp.warmup);
     samp.n_warmup = length(samp.warmup)
     if samp.n_warmup == 0
         error("Insufficient Direction Vectors Found")
@@ -135,6 +112,6 @@ function hr_sample!(samp::HRSampler, n::Int; thinning::Int = 1, burn_in::Int = -
             push!(chain, copy(samp.prev))
         end
     end
-    return VectorOfArray(chain)
+    return VectorOfArray(chain);
 
 end
