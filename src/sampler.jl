@@ -2,35 +2,62 @@ using LinearAlgebra
 using Random
 using Distributions
 using RecursiveArrayTools
-
 using JuMP
 using Gurobi
-ENV["GRB_LICENSE_FILE"] = "/Users/longcy/Documents/Gurobi/gurobi.lic" 
+
 # replace with your Gurobi license path
-const GRB_ENV = Gurobi.Env(output_flag=0)
+ENV["GRB_LICENSE_FILE"] = "/Users/longcy/Documents/Gurobi/gurobi.lic" 
 
-include("lvmodel.jl")
+mutable struct HRSampler{T <: AbstractMatrixConstraintProblem}
+    # Problem information
+    problem::T
+    warmup::Vector{Vector{Float64}}
+    start::Vector{Float64}
+    prev::Vector{Float64}
+    n_warmup::Int
+    n_samples::Int
+    abs_tol::Float64
+    scale_tol::Float64
+    feasible::Bool
+    RNG::Random.MersenneTwister
+end
 
 
-function warmup_sampler!(samp::HRSampler)
-    b_tol= samp.bounds_tol
-    f_tol = samp.feas_tol
-    N_eff = samp.pblm.Λ * samp.pblm.d + samp.pblm.N⁰
+function create_sampler(problem::EnergyConstraintProblem; samp_seed::Int=42, abs_tol::Float64=1e-6, scale_tol::Float64=1e-6)
+    warmup = Vector{Vector{Float64}}()
+    start = zeros(problem.K)
+    prev = zeros(problem.K)
+    n_warmup = 0
+    n_samples = 0
+    feasible = false
+    RNG = MersenneTwister(samp_seed)
+    return HRSampler(problem, warmup, start, prev, n_warmup, n_samples, abs_tol, scale_tol, feasible, RNG)
+end
+
+
+function warmup!(samp::HRSampler)
+    p = samp.problem
+    abs_tol= samp.abs_tol
+    scale_tol = samp.scale_tol
+    N_eff = p.N⁰ - p.c
     
-    # Initialize a JuMP Model with Gurobi as the solver
+    # Initialize a JuMP Model with Gurobi solver for the warmup
     model = Model(() -> Gurobi.Optimizer(GRB_ENV));
-    set_optimizer_attribute(model, "OutputFlag", 0)   # Mutes all Gurobi output
-    set_optimizer_attribute(model, "LogToConsole", 0) # Prevents logging to console
-    # set_optimizer_attribute(model, "Threads", 1)
+    set_optimizer_attribute(model, "OutputFlag", 0)   # Mute all Gurobi output
+    set_optimizer_attribute(model, "LogToConsole", 0) # Prevent logging to console
 
-    # setup the warmup problem
-    @variable(model, s[i = 1:samp.pblm.K] >= b_tol);
-    @constraint(model, samp.pblm.Λ * s .>= N_eff * (1+f_tol));
-    @constraint(model, dot(samp.pblm.m, s) <= samp.pblm.Sᵢ * samp.pblm.K* (1-b_tol)) ;
+    # Specify the variables and constraints for the warmup
+    @variable(model, s[i = 1:p.K] >= abs_tol);
+    @constraint(model, p.Λ * s .>= N_eff * (1 + scale_tol));
+    if p.type == :Individual
+        @constraint(model, dot(p.m, s) <= p.S * p.K * (1-scale_tol));
+    elseif p.type == :Total
+        @constraint(model, transpose(s) * p.Q * s + dot(p.c, s) <= p.S * (1-scale_tol))
+    end
 
-    # Warm up along each individual dimension to get the Min and Max to form a spanning set
-    for sense in (MOI.MIN_SENSE, MOI.MAX_SENSE)
-        for i in 1:samp.pblm.K
+    # Optimize along each sᵢ to draw a bounding box
+    for sense in (MOI.MIN_SENSE, MOI.MAX_SENSE) # min and max
+        for i in 1:p.K
             @objective(model, sense, s[i]);
             optimize!(model);
             if termination_status(model) == MOI.INFEASIBLE
@@ -42,17 +69,17 @@ function warmup_sampler!(samp::HRSampler)
             end
         end
     end
+    
     # Remove redundant search directions
     unique!(samp.warmup);
     samp.n_warmup = length(samp.warmup)
     if samp.n_warmup == 0
         error("Insufficient Direction Vectors Found")
     end
-    samp.n_samples = samp.n_warmup
-    samp.center = mean(samp.warmup) # if not convex, then this center may be infeasible
+    samp.start = mean(samp.warmup) #? if not convex, then this start may be infeasible
 
-    # start at the current estimated center
-    samp.prev = copy(samp.center)
+    # start at the current estimated start
+    samp.prev = copy(samp.start)
 
     samp.feasible = true
     return :Feasible
@@ -61,57 +88,58 @@ end
 """
 Sample a new feasible point from the point `sampler.prev` in direction `Δ`.
 """
-function hr_step(samp::HRSampler, Δ::Vector{Float64})
+function step(samp::HRSampler, Δ::Vector{Float64})
     x = samp.prev
-    b_tol = samp.bounds_tol
-    f_tol = samp.feas_tol
-    Λ = samp.pblm.Λ
-    N⁰ = samp.pblm.N⁰
-    m = samp.pblm.m
-    K = samp.pblm.K
-    d = samp.pblm.d
-    Sᵢ = samp.pblm.Sᵢ
-    # dir=1 if Δ>feas_tol; dir=-1 if Δ<-feas_tol; dir=0 elsewise
-    direction = sign.(Δ) .* (abs.(Δ) .>= f_tol)
-    valid = findall(direction .!= 0)
-    
-    if valid == []
-        pass # I don't know what to do here
+    p = samp.problem
+
+
+    # No need to discuss sign of Δᵢ, all pos (neg.) λ goes to upper (lower) bounds
+    # due to formal replacement of f(x) ← f(x+λΔ) and therefore given signs of coeff.
+
+    # Apply the sᵢ>=0 constrs.
+    λ_pos= -x./Δ
+
+    # Apply the feasibility constrs.
+    λ_feas = (p.N⁰ - p.Λ*x - p.c) ./ (p.Λ*Δ)
+
+    # Apply the individual/total supply constrs.
+    if p.type == :Individual
+        λ_supp = (p.K*p.S - dot(p.m, x))/dot(p.m, Δ)
+    elseif p.type == :Total
+        A = Δ' * p.Q * Δ
+        B = 2x' * p.Q * Δ + p.c' * Δ
+        C = x' * p.Q * x + p.c' * x - p.S
+        # @info "quad constrain with A=$(round(A, digits=3)), C=$(round(C, digits=3))"
+        r0 = -B/(2A); r1 = sqrt(B^2-4A*C)/(2A)
+        λ_supp = [r0-r1, r0+r1]
     end
 
-    # sᵢ>=0
-    λ1= -(1-b_tol) * x[valid]./Δ[valid] # positive goes to upper, negative goes to lower
+    # ... Further extension of this work ...
 
-    #∑ᵢ sᵢmᵢ <= K*Sᵢ
-    λ2 = (K*Sᵢ - dot(x, m))/dot(Δ, m) #positive goes to upper, negative goes to lower
+    # Combine all constrs. into (λ_min to λ_max) and sample λ
+    λ_all = [λ_pos; λ_supp; λ_feas]
+    λ_min = isempty(λ_all[λ_all .< 0]) ? 0 : maximum(λ_all[λ_all .< 0])
+    λ_max = isempty(λ_all[λ_all .> 0]) ? 0 : minimum(λ_all[λ_all .> 0])
+    λ = rand(Uniform(λ_min, λ_max))
 
-    # Λ(s-d) >= N⁰
-    λ3 = (N⁰ - Λ*x + Λ*d) ./ (Λ*Δ) # positive goes to upper, negative goes to lower
-
-    # combine 1,2,3, find the miminal of the positive and the maximum of the negative
-    λall = [λ1; λ2; λ3]
-    λmin = maximum(λall[λall .< 0])
-    λmax = minimum(λall[λall .> 0])
-    # sample λ from (λmin to λmax)
-    λ = rand(Uniform(λmin, λmax))
-    return x + λ * Δ
+    return x + λ*Δ, λ_min, λ_max
 end
 
 
-function hr_sample!(samp::HRSampler, n::Int; thinning::Int = 1, burn_in::Int = -1)
-    if burn_in == -1 # what is the correct way to do this in a typed manner?
+function hr_sample!(samp::HRSampler, n::Int; thinning::Int = 2, burn_in::Int = -1)
+    if burn_in == -1
         burn_in = round(Int, n / 2)
     end
     chain = Vector{eltype(samp.prev)}[]
 
     for i in 1:n
-        Δ = samp.Z * rand(Uniform(-1, 1), samp.pblm.K)
-        samp.prev = hr_step(samp, Δ)
+        Δ = rand(Uniform(-1, 1), samp.problem.K)
+        samp.prev, λ_min, λ_max= step(samp, Δ)
         samp.n_samples += 1
+        @info "Iter $i: λ sampled in range [$(round(λ_min, digits=3)), $(round(λ_max, digits=3))]"
         if i % thinning == 0 && i > burn_in
             push!(chain, copy(samp.prev))
         end
     end
-    return VectorOfArray(chain);
-
+    return VectorOfArray(chain)
 end

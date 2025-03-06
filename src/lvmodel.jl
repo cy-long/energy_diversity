@@ -4,68 +4,72 @@ using Distributions
 
 abstract type AbstractMatrixConstraintProblem end
 
-struct EnergyConstraintProblem{T} <: AbstractMatrixConstraintProblem
-    Λ::Matrix{T} # inverse interaction matrix
-    N⁰::Vector{T} # baseline biomass vector
-    m::Vector{T} # bodysize vector
+mutable struct EnergyConstraintProblem{T} <: AbstractMatrixConstraintProblem
+    σ::Matrix{T} # (energetic) interaction matrix
+    Λ::Matrix{T} # inverse interaction matrix, Λ = σ⁻¹
+    Q::Matrix{T} # quadratic form, Q = (Λ + Λ')/2
+    c::Vector{T} # demands offset, c = -Λ * d
+    m::Vector{T} # vector of bodysize
+    d::Vector{T} # vector of demand
+    N⁰::Vector{T} # vector of minimal biomass 
     K::Int # number of species
-    d::Vector{T} # demand vector
-    Sᵢ::T # average individual supply cap
+    S::T # supply cap, could be individual or total
+    type::Symbol # specify the type of constraint
 end
 
-mutable struct HRSampler{T <: AbstractMatrixConstraintProblem}
-    # Problem information
-    pblm::T
-    Z::Matrix{Float64} # nullspace of pblm.E
-    warmup::Vector{Vector{Float64}}
-    center::Vector{Float64}
-    n_warmup::Int
-    n_samples::Int
-    prev::Vector{Float64}
-    feas_tol::Float64
-    bounds_tol::Float64
-    feasible::Bool
-    RNG::Random.MersenneTwister
-end
-
-function generate_inte_matrix(Ks::Int)
-    inte_matrix = -abs.(randn(Ks, Ks))
-    inte_matrix[diagind(inte_matrix)] .= -1
-    return inte_matrix
-end
-
-function create_energy_problem(K::Int, Sind::Float64; seed=nothing)
+"""
+Generate a random energy constrained ecosystem with:
+K species, S supply cap, log-normal bodymass, normal interaction strength, -1/4 demands scaling, minimal biomass, 
+"""
+function create_energy_problem(K::Int, S::Float64, type::Symbol; seed=nothing)
     if seed !== nothing
         Random.seed!(seed)  # Set the seed for reproducibility
     end
+    if type ∉ [:Individual, :Total]
+        throw(ArgumentError("type must be either :Individual or :Total"))
+    end
     m = rand(LogNormal(0, 0.5), K)
-    σ = -generate_inte_matrix(K) ./m' # currently purely compatitive
-    Λ = inv(σ)
+    σ = randn(K, K) ./m'
     d = m.^(-1/4)
     N⁰ = fill(1e-2, K)
-    Sᵢ = Sind
-    # m = fill(1.0, K)
-    # N⁰ = fill(1e-2, K)
-    # d = fill(0.0, K)
-    return EnergyConstraintProblem(Λ, N⁰, m, K, d, Sᵢ)
+    Λ = inv(σ)
+    Q = (Λ + Λ')/2
+    c = -Λ * d
+    return EnergyConstraintProblem(σ,Λ,Q,c,m,d,N⁰,K,S,type)
 end
 
-function create_sampler(problem::EnergyConstraintProblem)
-    pblm = problem
-    Z = Matrix(Diagonal(ones(pblm.K))) # no equality const., null space=the entire space
-    warmup = Vector{Vector{Float64}}()
-    center = zeros(pblm.K)
-    n_warmup = 0
-    n_samples = 0
-    prev = zeros(pblm.K)
-    feas_tol = 1e-6
-    bounds_tol = 1e-6
-    feasible = false
-    RNG = MersenneTwister(42)
+# Λ = inv(σ)
+# Q = (Λ + Λ')/2
+# c = -Λ * d
 
-    return HRSampler(pblm, Z, warmup, center, n_warmup, n_samples, prev, feas_tol, bounds_tol, feasible, RNG)
+"""
+Add minimal self-regulation to the interaction to make σ dissipative (σ+σ' positive def.)
+"""
+function make_problem_dissipative!(p::EnergyConstraintProblem, ϵ::Float64=1e-3)
+    σ = p.σ
+    m = p.m
+    M_neg = Diagonal(m.^(1/2))
+
+    # increase self-regulation while keeping network structure
+    c = -min(minimum(eigvals(M_neg * ((σ + σ')/2) * M_neg)), 0)
+    σ += (c+ϵ) * Diagonal(m.^(-1)) 
+    Λ = inv(σ)
+
+    p.σ, p.Λ, p.Q, p.c = σ, Λ, (Λ + Λ') / 2, -Λ * p.d
+    return(minimum(eigvals(((Λ + Λ')/2)))>0)
 end
 
-function baseline_supply(problem::EnergyConstraintProblem)
-    return sum(problem.d + inv(problem.Λ) * problem.N⁰)/problem.K
-end
+"""
+Calculate the baseline supply needed to sustain the ecosystem with least biomass (averaged by K)
+"""
+baseline_supply(p::EnergyConstraintProblem) = sum(p.d + inv(p.Λ) * p.N⁰)/p.K
+
+"""
+Calculate the individual supply at state s (averaged by K)
+"""
+individual_supply(s::Vector{Float64}, p::EnergyConstraintProblem) = dot(s, p.m)/p.K
+
+"""
+Calculate the total supply at state s (weighed by N)
+"""
+total_supply(s::Vector{Float64}, p::EnergyConstraintProblem) = transpose(s) * p.Λ * (s - p.d)
