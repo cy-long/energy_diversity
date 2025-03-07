@@ -1,3 +1,11 @@
+"""
+This script develops tools to sample on energetic feasibility domains. It is mainly based
+on hit-and-run sampling on convex set. Which is inspired by COBRA¹ and Biologically Constrained Foodwebs²
+
+¹ https://opencobra.github.io/cobrapy
+² https://doi.org/10.1073/pnas.2212061120
+"""
+
 using LinearAlgebra
 using Random
 using Distributions
@@ -35,25 +43,31 @@ function create_sampler(problem::EnergyConstraintProblem; samp_seed::Int=42, abs
 end
 
 
+function create_model(p::EnergyConstraintProblem, abs_tol::Float64=0.0, scale_tol::Float64=0.0)
+    model = Model()
+    @variable(model, s[i = 1:p.K] >= abs_tol);
+    @constraint(model, p.Λ * s .>= (p.N⁰ - p.c) * (1 + scale_tol));
+    flag_lin = false
+    if p.type == :Individual
+        @constraint(model, dot(p.m, s) <= p.S * p.K * (1-scale_tol));
+        flag_lin = true
+    elseif p.type == :Total
+        @constraint(model, transpose(s) * p.Q * s + dot(p.c, s) <= p.S * (1-scale_tol))
+    end
+    return model, s, flag_lin
+end
+
+
 function warmup!(samp::HRSampler)
     p = samp.problem
     abs_tol= samp.abs_tol
     scale_tol = samp.scale_tol
-    N_eff = p.N⁰ - p.c
     
     # Initialize a JuMP Model with Gurobi solver for the warmup
-    model = Model(() -> Gurobi.Optimizer(GRB_ENV));
+    model, s, _ = create_model(p, abs_tol, scale_tol)
+    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV))
     set_optimizer_attribute(model, "OutputFlag", 0)   # Mute all Gurobi output
     set_optimizer_attribute(model, "LogToConsole", 0) # Prevent logging to console
-
-    # Specify the variables and constraints for the warmup
-    @variable(model, s[i = 1:p.K] >= abs_tol);
-    @constraint(model, p.Λ * s .>= N_eff * (1 + scale_tol));
-    if p.type == :Individual
-        @constraint(model, dot(p.m, s) <= p.S * p.K * (1-scale_tol));
-    elseif p.type == :Total
-        @constraint(model, transpose(s) * p.Q * s + dot(p.c, s) <= p.S * (1-scale_tol))
-    end
 
     # Optimize along each sᵢ to draw a bounding box
     for sense in (MOI.MIN_SENSE, MOI.MAX_SENSE) # min and max
@@ -80,18 +94,18 @@ function warmup!(samp::HRSampler)
 
     # start at the current estimated start
     samp.prev = copy(samp.start)
-
     samp.feasible = true
+
     return :Feasible
 end
+
 
 """
 Sample a new feasible point from the point `sampler.prev` in direction `Δ`.
 """
-function step(samp::HRSampler, Δ::Vector{Float64})
+function hr_step(samp::HRSampler, Δ::Vector{Float64})
     x = samp.prev
     p = samp.problem
-
 
     # No need to discuss sign of Δᵢ, all pos (neg.) λ goes to upper (lower) bounds
     # due to formal replacement of f(x) ← f(x+λΔ) and therefore given signs of coeff.
@@ -126,17 +140,19 @@ function step(samp::HRSampler, Δ::Vector{Float64})
 end
 
 
-function hr_sample!(samp::HRSampler, n::Int; thinning::Int = 2, burn_in::Int = -1)
+function hr_sample!(samp::HRSampler, n::Int; thinning::Int = 1, burn_in::Int = -1)
     if burn_in == -1
         burn_in = round(Int, n / 2)
     end
-    chain = Vector{eltype(samp.prev)}[]
 
+    chain = []
     for i in 1:n
         Δ = rand(Uniform(-1, 1), samp.problem.K)
-        samp.prev, λ_min, λ_max= step(samp, Δ)
+        samp.prev, λ_min, λ_max= hr_step(samp, Δ)
         samp.n_samples += 1
-        @info "Iter $i: λ sampled in range [$(round(λ_min, digits=3)), $(round(λ_max, digits=3))]"
+        if i % 500 == 0
+            @info "Iter $i: λ sampled in range [$(round(λ_min, digits=3)), $(round(λ_max, digits=3))]"
+        end
         if i % thinning == 0 && i > burn_in
             push!(chain, copy(samp.prev))
         end
