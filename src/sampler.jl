@@ -13,9 +13,8 @@ using RecursiveArrayTools
 using JuMP
 using Gurobi
 
-# replace with your Gurobi license path
-ENV["GRB_LICENSE_FILE"] = "/Users/longcy/Documents/Gurobi/gurobi.lic" 
 
+# include("_problem.jl")
 mutable struct HRSampler{T <: AbstractMatrixConstraintProblem}
     # Problem information
     problem::T
