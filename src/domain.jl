@@ -8,6 +8,8 @@ using JuMP
 using Polyhedra
 using QHull
 using Plots
+using RecursiveArrayTools
+include("_problem.jl")
 
 """Get the polyhedron directly from constraints (half-space inequalities)"""
 function domain_by_constr(p::EnergyConstraintProblem)
