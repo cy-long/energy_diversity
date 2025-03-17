@@ -13,21 +13,7 @@ using RecursiveArrayTools
 using JuMP
 using Gurobi
 
-
-# include("_problem.jl")
-mutable struct HRSampler{T <: AbstractMatrixConstraintProblem}
-    # Problem information
-    problem::T
-    warmup::Vector{Vector{Float64}}
-    start::Vector{Float64}
-    prev::Vector{Float64}
-    n_warmup::Int
-    n_samples::Int
-    abs_tol::Float64
-    scale_tol::Float64
-    feasible::Bool
-    RNG::Random.MersenneTwister
-end
+include("_problem.jl")
 
 
 function create_sampler(problem::EnergyConstraintProblem; samp_seed::Int=42, abs_tol::Float64=1e-6, scale_tol::Float64=1e-6)

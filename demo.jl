@@ -4,7 +4,7 @@ include("src/domain.jl")
 const GRB_ENV = Gurobi.Env(output_flag=0)
 
 # Define the energetic problem
-p = create_energy_problem(5, 8.0, :Individual, seed=20);
+p = create_energy_problem(3, 5.0, :Individual, seed=10);
 baseline_supply(p)
 
 # Volume by triangularization

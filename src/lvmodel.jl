@@ -21,7 +21,7 @@ function create_energy_problem(K::Int, S::Float64, type::Symbol; seed=nothing)
         throw(ArgumentError("type must be either :Individual or :Total"))
     end
     m = rand(LogNormal(0, 0.5), K)
-    σ = abs.(randn(K, K) ./m')
+    σ = randn(K, K) ./m'
     d = m.^(-1/4)
     N⁰ = fill(0.1, K)
     Λ = inv(σ)
