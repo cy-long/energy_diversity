@@ -1,146 +1,121 @@
 """
-This script develops tools to sample on energetic feasibility domains. It is mainly based
-on hit-and-run sampling on convex set. Which is inspired by COBRA¹ and Biologically Constrained Foodwebs²
+This script implement sampling and volume estimation for the energy constrained problem
+It works most generally for the intersection of a convex polyhedron and a list of spheres.
+- The convex polyhedron is from feasibility conditions;
+- The sphere list consists of total energetic boundary (if applicable) and auxillary spheres for volume estimation.
 
-¹ https://opencobra.github.io/cobrapy
-² https://doi.org/10.1073/pnas.2212061120
+Sampling is perfomed by by RDHR (random direction hit-and-run¹²), Volume estimation is performed by MMC (multiphase Monte Carlo³⁴).
+For linear problem, volume estimation from Qhull method is included as a comparison.
+
+References: ¹https://opencobra.github.io/cobrapy, ²https://doi.org/10.1073/pnas.2212061120
+³https://doi.org/10.1016/j.comgeo.2022.101916, ⁴https://doi.org/10.1145/3194656
 """
 
-using LinearAlgebra
-using Random
-using Distributions
-using RecursiveArrayTools
-using JuMP
-using Gurobi
+function hr_step(x::Vector{Float64}, region::InterPolySpheres)
+    Δ = randn(size(x,1))
 
-include("_problem.jl")
+    A = region.A; b = region.b
+    λs = (b - A*x) ./ (A * Δ)
 
-
-function create_sampler(problem::EnergyConstraintProblem; samp_seed::Int=42, abs_tol::Float64=1e-6, scale_tol::Float64=1e-6)
-    warmup = Vector{Vector{Float64}}()
-    start = zeros(problem.K)
-    prev = zeros(problem.K)
-    n_warmup = 0
-    n_samples = 0
-    feasible = false
-    RNG = MersenneTwister(samp_seed)
-    return HRSampler(problem, warmup, start, prev, n_warmup, n_samples, abs_tol, scale_tol, feasible, RNG)
-end
-
-
-function create_model(p::EnergyConstraintProblem, abs_tol::Float64=0.0, scale_tol::Float64=0.0)
-    model = Model()
-    @variable(model, s[i = 1:p.K] >= abs_tol);
-    @constraint(model, p.Λ * s .>= (p.N⁰ - p.c) * (1 + scale_tol));
-    flag_lin = false
-    if p.type == :Individual
-        @constraint(model, dot(p.m, s) <= p.S * p.K * (1-scale_tol));
-        flag_lin = true
-    elseif p.type == :Total
-        @constraint(model, transpose(s) * p.Q * s + dot(p.c, s) <= p.S * (1-scale_tol))
-    end
-    return model, s, flag_lin
-end
-
-
-function warmup!(samp::HRSampler)
-    p = samp.problem
-    abs_tol= samp.abs_tol
-    scale_tol = samp.scale_tol
-    
-    # Initialize a JuMP Model with Gurobi solver for the warmup
-    model, s, _ = create_model(p, abs_tol, scale_tol)
-    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV))
-    set_optimizer_attribute(model, "OutputFlag", 0)   # Mute all Gurobi output
-    set_optimizer_attribute(model, "LogToConsole", 0) # Prevent logging to console
-
-    # Optimize along each sᵢ to draw a bounding box
-    for sense in (MOI.MIN_SENSE, MOI.MAX_SENSE) # min and max
-        for i in 1:p.K
-            @objective(model, sense, s[i]);
-            optimize!(model);
-            if termination_status(model) == MOI.INFEASIBLE
-                samp.feasible = false
-                return :Infeasible
-            end
-            if termination_status(model) == MOI.OPTIMAL
-                push!(samp.warmup, value.(s))
-            end
-        end
-    end
-    
-    # Remove redundant search directions
-    unique!(samp.warmup);
-    samp.n_warmup = length(samp.warmup)
-    if samp.n_warmup == 0
-        error("Insufficient Direction Vectors Found")
-    end
-    samp.start = mean(samp.warmup) #? if not convex, then this start may be infeasible
-
-    # start at the current estimated start
-    samp.prev = copy(samp.start)
-    samp.feasible = true
-
-    return :Feasible
-end
-
-
-"""
-Sample a new feasible point from the point `sampler.prev` in direction `Δ`.
-"""
-function hr_step(samp::HRSampler, Δ::Vector{Float64})
-    x = samp.prev
-    p = samp.problem
-
-    # No need to discuss sign of Δᵢ, all pos (neg.) λ goes to upper (lower) bounds
-    # due to formal replacement of f(x) ← f(x+λΔ) and therefore given signs of coeff.
-
-    # Apply the sᵢ>=0 constrs.
-    λ_pos= -x./Δ
-
-    # Apply the feasibility constrs.
-    λ_feas = (p.N⁰ - p.Λ*x - p.c) ./ (p.Λ*Δ)
-
-    # Apply the individual/total supply constrs.
-    if p.type == :Individual
-        λ_supp = (p.K*p.S - dot(p.m, x))/dot(p.m, Δ)
-    elseif p.type == :Total
-        A = Δ' * p.Q * Δ
-        B = 2x' * p.Q * Δ + p.c' * Δ
-        C = x' * p.Q * x + p.c' * x - p.S
-        # @info "quad constrain with A=$(round(A, digits=3)), C=$(round(C, digits=3))"
-        r0 = -B/(2A); r1 = sqrt(B^2-4A*C)/(2A)
-        λ_supp = [r0-r1, r0+r1]
+    for sp in region.sps
+        yc = sp.c; r = sp.r
+        a = dot(Δ, Δ); b = 2*dot(Δ, x-yc); c = dot(x-yc,x-yc)-r^2; d = sqrt(b^2 - 4*a*c)
+        λs = vcat(λs, [(-b-d)/(2*a), (-b+d)/(2*a)])
     end
 
-    # ... Further extension of this work ...
-
-    # Combine all constrs. into (λ_min to λ_max) and sample λ
-    λ_all = [λ_pos; λ_supp; λ_feas]
-    λ_min = isempty(λ_all[λ_all .< 0]) ? 0 : maximum(λ_all[λ_all .< 0])
-    λ_max = isempty(λ_all[λ_all .> 0]) ? 0 : minimum(λ_all[λ_all .> 0])
+    λ_min = isempty(λs[λs .< 0]) ? 0 : maximum(λs[λs .< 0])
+    λ_max = isempty(λs[λs .> 0]) ? 0 : minimum(λs[λs .> 0])
     λ = rand(Uniform(λ_min, λ_max))
 
-    return x + λ*Δ, λ_min, λ_max
+    return x + λ * Δ, λ_min, λ_max
 end
 
+function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, chev::Sphere=region.chev)
+    K = length(chev.c)
+    samples = []
+    burn_in = Int(n_samples / 2) # burn-in period
 
-function hr_sample!(samp::HRSampler, n::Int; thinning::Int = 1, burn_in::Int = -1)
-    if burn_in == -1
-        burn_in = round(Int, n / 2)
+    for _ in 1:n_threads
+        e = randn(K)
+        # starting from random point inside the chevball
+        x = chev.c + rand(Uniform(0, chev.r/norm(e))) * e
+        thread = []
+        for i in 1:n_samples
+            x, _, _ = hr_step(x, region)
+            if i > burn_in
+                push!(thread, x) #TODO: thinning?
+            end
+        end
+    samples = vcat(samples, thread)
     end
 
-    chain = []
-    for i in 1:n
-        Δ = rand(Uniform(-1, 1), samp.problem.K)
-        samp.prev, λ_min, λ_max= hr_step(samp, Δ)
-        samp.n_samples += 1
-        if i % 500 == 0
-            @info "Iter $i: λ sampled in range [$(round(λ_min, digits=3)), $(round(λ_max, digits=3))]"
+    return(samples)
+end
+
+function is_inside(x::Vector{Float64}, region::InterPolySpheres)
+    in_sps = [norm(x - sp.c) <= sp.r for sp in region.sps]
+    in_po = region.A * x .<= region.b
+    return all(in_sps) && all(in_po)
+end
+
+function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bool=false)
+    chev = domain.chev
+    r = chev.r
+    
+    # create and sandwhich the domain
+    if domain.type == :Individual
+        po = polyhedron(hrep(domain.A, domain.b))
+        if exact
+            return Polyhedra.volume(po)
         end
-        if i % thinning == 0 && i > burn_in
-            push!(chain, copy(samp.prev))
-        end
+        vertices = points(po)
+        ρ = maximum([norm(v-chev.c) for v in vertices])
+    elseif domain.type == :Total
+        sp0 = domain.sps[1]
+        samples_0 = hr_sample(domain, 1, 5000, chev)
+        ρ = maximum([norm(x-chev.c) for x in samples_0]) # slightly dumb way to sandwhich the domain
     end
-    return VectorOfArray(chain)
+
+    # slice the domain with eccentric spheres
+    r_phs = [r*(ρ/r)^(k/N) for k in 0:(N+eN)]
+    sp_phs = [Sphere(chev.c, r_ph) for r_ph in r_phs]
+
+    if domain.type == :Individual 
+        regions = [InterPolySpheres(domain.A, domain.b, [sp], chev, :Individual) for sp in sp_phs]
+    elseif domain.type == :Total
+        regions = [InterPolySpheres(domain.A, domain.b, [sp0, sp], chev, :Total) for sp in sp_phs]
+    end
+
+    # perform multiphase Monte Carlo sampling
+    vol_ratio = Float64[]
+    for i in eachindex(r_phs)
+        if i == firstindex(r_phs)
+            push!(vol_ratio, vol_sphere(sp_phs[i]))
+            continue
+        end
+        samples_i = hr_sample(regions[i], 10, 10000, chev) #TODO: start chains from previous samples, instead of chevball
+        inside_i = [is_inside(x, regions[i-1]) for x in samples_i]
+        push!(vol_ratio, 1 / mean(inside_i))
+    end
+
+    return(prod(vol_ratio))
+end
+
+# higher level wrapper for EnergyConstrProb, just specify the domains
+function volume_EFD(p::EnergyConstrProb, N::Int=10, eN::Int=1, exact::Bool=false)
+    itp = make_isotropic(p)
+    chev = chevball(p, itp)
+
+    if p.type == :Individual
+        domain = InterPolySpheres(itp.A, itp.b, [], chev, :Individual)
+    elseif p.type == :Total
+        sp0 = Sphere(itp.yc, sqrt(itp.t))
+        domain = InterPolySpheres(itp.A, itp.b, [sp0], chev, :Total)
+        exact && throw(ErrorException("Exact volume not supported for Total Energy Constraint"))
+    end
+
+    vol_in_y = volume_domain(domain, N, eN, exact)
+    vol_in_s = vol_in_y * det(itp.invL)
+
+    return(vol_in_s)
 end
