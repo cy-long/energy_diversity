@@ -1,15 +1,61 @@
 """
-This script implement sampling and volume estimation for the energy constrained problem
-It works most generally for the intersection of a convex polyhedron and a list of spheres.
+This scripts implements the backend computational geometry. Constrained energetic problem can be  generalized into the InterPolySpheres type, where
 - The convex polyhedron is from feasibility conditions;
-- The sphere list consists of total energetic boundary (if applicable) and auxillary spheres for volume estimation.
+- The spheres are total energetic boundary (if applicable) and auxillary spheres.
 
-Sampling is perfomed by by RDHR (random direction hit-and-run¹²), Volume estimation is performed by MMC (multiphase Monte Carlo³⁴).
-For linear problem, volume estimation from Qhull method is included as a comparison.
+Around InterPolySpheres we build sampling and volume estimation methods. Sampling is perfomed by by RDHR (random direction hit-and-run¹²), Volume estimation is performed by MMC (multiphase Monte Carlo³⁴).
+
+For linear constraints, trianglation method is included as a comparison.
 
 References: ¹https://opencobra.github.io/cobrapy, ²https://doi.org/10.1073/pnas.2212061120
 ³https://doi.org/10.1016/j.comgeo.2022.101916, ⁴https://doi.org/10.1145/3194656
 """
+function min_vol_ellipsoid(po::Polyhedron)
+    pts = hcat(points(po)...)
+    ϵ = minimum_volume_ellipsoid(pts)
+    return Matrix(ϵ.H)
+end
+
+struct Sphere
+    c::Vector{Float64} # center
+    r::Float64 # radius
+end
+function vol_sphere(sp::Sphere)
+    K = length(sp.c)
+    return (pi^(K/2) / gamma(K/2 + 1)) * sp.r^K
+end
+
+struct InterPolySpheres
+    A::Matrix{Float64}
+    b::Vector{Float64}
+    sps::Vector{Sphere}
+    type::Symbol # :Individual or :Total
+end
+
+function chevball(domain::InterPolySpheres)
+    A = domain.A; b = domain.b; K=size(A,2)
+    A_norms = [norm(row) for row in eachrow(A)]
+
+    model = Model()
+    @variable(model, x[i = 1:K])
+    @variable(model, r >= 0)
+    @constraint(model, A * x + A_norms * r .<= b)
+    for sp in domain.sps
+        @constraint(model, [sp.r - r; x - sp.c] in SecondOrderCone())
+    end
+    @objective(model, Max, r)
+    
+    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV)); #> handling usage outside this package
+    set_optimizer_attribute(model, "OutputFlag", 0)
+    set_optimizer_attribute(model, "LogToConsole", 0)
+    optimize!(model)
+
+    if termination_status(model) != MOI.OPTIMAL
+        error("Chevball optimization failed: $(termination_status(model))")
+    else
+        return Sphere(value.(x), value.(r))
+    end
+end
 
 function hr_step(x::Vector{Float64}, region::InterPolySpheres)
     Δ = randn(size(x,1))
@@ -30,15 +76,17 @@ function hr_step(x::Vector{Float64}, region::InterPolySpheres)
     return x + λ * Δ, λ_min, λ_max
 end
 
-function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, chev::Sphere=region.chev)
-    K = length(chev.c)
+# regions will be intersecting domain with k*chevball(domain), whose chevball is the same as for the domain
+# therefore, no need to recompute chevball for each region, as it could be costy in time
+function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, chev_start::Sphere=chevball(region))
+    K = length(chev_start.c)
     samples = []
-    burn_in = Int(n_samples / 2) # burn-in period
+    burn_in = floor(Int, n_samples/2) # burn-in period
 
     for _ in 1:n_threads
         e = randn(K)
         # starting from random point inside the chevball
-        x = chev.c + rand(Uniform(0, chev.r/norm(e))) * e
+        x = chev_start.c + rand(Uniform(0, chev_start.r/norm(e))) * e
         thread = []
         for i in 1:n_samples
             x, _, _ = hr_step(x, region)
@@ -59,9 +107,9 @@ function is_inside(x::Vector{Float64}, region::InterPolySpheres)
 end
 
 function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bool=false)
-    chev = domain.chev
+    chev = chevball(domain)
     r = chev.r
-    
+
     # create and sandwhich the domain
     if domain.type == :Individual
         po = polyhedron(hrep(domain.A, domain.b))
@@ -81,9 +129,9 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
     sp_phs = [Sphere(chev.c, r_ph) for r_ph in r_phs]
 
     if domain.type == :Individual 
-        regions = [InterPolySpheres(domain.A, domain.b, [sp], chev, :Individual) for sp in sp_phs]
+        regions = [InterPolySpheres(domain.A, domain.b, [sp], :Individual) for sp in sp_phs]
     elseif domain.type == :Total
-        regions = [InterPolySpheres(domain.A, domain.b, [sp0, sp], chev, :Total) for sp in sp_phs]
+        regions = [InterPolySpheres(domain.A, domain.b, [sp0, sp], :Total) for sp in sp_phs]
     end
 
     # perform multiphase Monte Carlo sampling
@@ -93,29 +141,10 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
             push!(vol_ratio, vol_sphere(sp_phs[i]))
             continue
         end
-        samples_i = hr_sample(regions[i], 10, 10000, chev) #TODO: start chains from previous samples, instead of chevball
+        samples_i = hr_sample(regions[i], 10, 5000, chev) #TODO: start chains from previous samples, instead of chevball
         inside_i = [is_inside(x, regions[i-1]) for x in samples_i]
         push!(vol_ratio, 1 / mean(inside_i))
     end
 
     return(prod(vol_ratio))
-end
-
-# higher level wrapper for EnergyConstrProb, just specify the domains
-function volume_EFD(p::EnergyConstrProb, N::Int=10, eN::Int=1, exact::Bool=false)
-    itp = make_isotropic(p)
-    chev = chevball(p, itp)
-
-    if p.type == :Individual
-        domain = InterPolySpheres(itp.A, itp.b, [], chev, :Individual)
-    elseif p.type == :Total
-        sp0 = Sphere(itp.yc, sqrt(itp.t))
-        domain = InterPolySpheres(itp.A, itp.b, [sp0], chev, :Total)
-        exact && throw(ErrorException("Exact volume not supported for Total Energy Constraint"))
-    end
-
-    vol_in_y = volume_domain(domain, N, eN, exact)
-    vol_in_s = vol_in_y * det(itp.invL)
-
-    return(vol_in_s)
 end

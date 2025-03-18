@@ -1,4 +1,4 @@
-module EnergyFeasibility
+module EnergeticFeasibility
 
 using Random, Distributions
 using SpecialFunctions
@@ -7,9 +7,11 @@ using JuMP, Gurobi
 using Polyhedra, QHull, MinimumVolumeEllipsoids
 using Plots
 
-export EnergyConstrProb, IsoTrans
-export create_poly, volume_EFD
+export EnergyConstrProb
+export sample_EFD, volume_EFD
+export show_chevball, show_linear
 
+const GRB_ENV = Gurobi.Env(output_flag=0)
 
 mutable struct EnergyConstrProb{T}
     σ::Matrix{T} # (energetic) interaction matrix
@@ -25,66 +27,6 @@ mutable struct EnergyConstrProb{T}
 end
 
 
-# linear transformed model using L; variables are defined at y instead of s space also.
-struct IsoTrans
-    L::Matrix{Float64} # Cholesky upper matrix, Q=L'L
-    invL::Matrix{Float64} # inverse of L
-    yc::Vector{Float64} # transformed center of sphere
-    t::Float64 # square of radius of sphere
-    A::Matrix{Float64} # transformed linear constraints
-    b::Vector{Float64} # linear constraints constants
-end
-
-struct Sphere
-    c::Vector{Float64} # center
-    r::Float64 # radius
-end
-
-mutable struct InterPolySpheres
-    A::Matrix{Float64}
-    b::Vector{Float64}
-    sps::Vector{Sphere}
-    chev::Sphere
-    type::Symbol # :Individual or :Total
-end
-
-function vol_sphere(sp::Sphere)
-    K = length(sp.c)
-    return (pi^(K/2) / gamma(K/2 + 1)) * sp.r^K
-end
-
-function chevball(p::EnergyConstrProb, itp::IsoTrans)
-    A = itp.A; b = itp.b
-    A_norms = [norm(row) for row in eachrow(A)]
-
-    model = Model()
-    @variable(model, x[i = 1:p.K])
-    @variable(model, r >= 0)
-    @constraint(model, A * x + A_norms * r .<= b)
-    if p.type == :Total
-        yc = itp.yc;  t = itp.t
-        @constraint(model, [sqrt(t)-r; x - yc] in SecondOrderCone())
-    end
-    @objective(model, Max, r)
-
-    set_optimizer(model, () -> Gurobi.Optimizer());
-    set_optimizer_attribute(model, "OutputFlag", 0)
-    set_optimizer_attribute(model, "LogToConsole", 0)
-    optimize!(model)
-
-    if termination_status(model) != MOI.OPTIMAL
-        error("Chevball optimization failed: $(termination_status(model))")
-    else
-        return Sphere(value.(x), value.(r))
-    end
-end
-
-function min_vol_ellipsoid(po::Polyhedron)
-    pts = hcat(points(po)...)
-    ϵ = minimum_volume_ellipsoid(pts)
-    return Matrix(ϵ.H)
-end
-
 function create_poly(p::EnergyConstrProb)
     if p.type == :Individual
         A = -vcat(I, p.Λ, -p.m')
@@ -96,6 +38,17 @@ function create_poly(p::EnergyConstrProb)
     return(polyhedron(hrep(A, b)))
 end
 
+# linear transformed model using L; variables are defined at y instead of s space also.
+struct IsoTrans
+    L::Matrix{Float64} # Cholesky upper matrix, Q=L'L
+    invL::Matrix{Float64} # inverse of L
+    yc::Vector{Float64} # transformed center of sphere
+    t::Float64 # square of radius of sphere
+    A::Matrix{Float64} # transformed linear constraints
+    b::Vector{Float64} # linear constraints constants
+end
+
+#actually the interface to translate p into geometrical stuff
 function make_isotropic(p::EnergyConstrProb)
     if p.type == :Total
         L = cholesky(p.Q).U
@@ -116,6 +69,47 @@ function make_isotropic(p::EnergyConstrProb)
     return IsoTrans(L, invL, yc, t, A, b)
 end
 
-include("sampler.jl")
+# go_back only for testing purposes
+function sample_EFD(p::EnergyConstrProb, N::Int=10000, go_back::Bool=true)
+    itp = make_isotropic(p)
+    if p.type == :Individual
+        domain = InterPolySpheres(itp.A, itp.b, [], :Individual)
+    elseif p.type == :Total
+        sp0 = Sphere(itp.yc, sqrt(itp.t))
+        domain = InterPolySpheres(itp.A, itp.b, [sp0], :Total)
+    end
+    nt = 10; ns = ceil(Int, 2*N/nt) #TODO: find the best nt and ns
+    samples = hr_sample(domain, nt, ns, chevball(domain))
+    if go_back 
+        samples = [itp.invL * y for y in samples] # transform back to s space
+    end
+    if (length(samples) > N)
+        samples = samples[1:N] # truncate to N samples
+    end
+    return(samples)
+end
+
+
+# higher level wrapper for EnergyConstrProb, just specify the domains
+function volume_EFD(p::EnergyConstrProb, N::Int=10, eN::Int=1, exact::Bool=false)
+    itp = make_isotropic(p)
+
+    if p.type == :Individual
+        domain = InterPolySpheres(itp.A, itp.b, [], :Individual)
+    elseif p.type == :Total
+        sp0 = Sphere(itp.yc, sqrt(itp.t))
+        domain = InterPolySpheres(itp.A, itp.b, [sp0], :Total)
+        exact && throw(ErrorException("Exact volume not supported for Total Energy Constraint"))
+    end
+
+    vol_in_y = volume_domain(domain, N, eN, exact)
+    vol_in_s = vol_in_y * det(itp.invL)
+    return(vol_in_s)
+end
+
+# add other functions that study the property of EnergyConstrProb, for instance, when to have feasible solution
+
+include("core.jl")
+include("visualization.jl")
 
 end
