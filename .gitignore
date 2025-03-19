@@ -23,6 +23,7 @@ docs/site/
 # environment.
 Manifest.toml
 
+**/*.DS_Store
 updatelog.md
 .vscode/**
 archive/**

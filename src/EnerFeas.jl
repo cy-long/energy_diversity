@@ -1,4 +1,4 @@
-module EnergeticFeasibility
+module EnerFeas
 
 using Random, Distributions
 using SpecialFunctions
@@ -8,11 +8,13 @@ using Polyhedra, QHull, MinimumVolumeEllipsoids
 using Plots
 
 export EnergyConstrProb
-export sample_EFD, volume_EFD
+export check_feasible_EFD, sample_EFD, volume_EFD
 export show_chevball, show_linear
 
 const GRB_ENV = Gurobi.Env(output_flag=0)
 
+# instead of "problem", these are just paramers. We need to reconfigurate this. 
+# Ideally allow people to perfom whatever constraints they like to do
 mutable struct EnergyConstrProb{T}
     σ::Matrix{T} # (energetic) interaction matrix
     Λ::Matrix{T} # inverse interaction matrix, Λ = σ⁻¹
@@ -35,7 +37,7 @@ function create_poly(p::EnergyConstrProb)
         A = -vcat(I, p.Λ)
         b = -vcat(zeros(p.K), p.N⁰-p.c)
     end
-    return(polyhedron(hrep(A, b)))
+    return polyhedron(hrep(A, b))
 end
 
 # linear transformed model using L; variables are defined at y instead of s space also.
@@ -48,7 +50,7 @@ struct IsoTrans
     b::Vector{Float64} # linear constraints constants
 end
 
-#actually the interface to translate p into geometrical stuff
+
 function make_isotropic(p::EnergyConstrProb)
     if p.type == :Total
         L = cholesky(p.Q).U
@@ -69,8 +71,41 @@ function make_isotropic(p::EnergyConstrProb)
     return IsoTrans(L, invL, yc, t, A, b)
 end
 
+function check_feasible_EFD(p::EnergyConstrProb)
+    A = -vcat(I, p.Λ)
+    b = -vcat(zeros(p.K), p.N⁰ - p.c)
+    model = Model()
+    @variable(model, s[i = 1:p.K])
+
+    if p.type == :Individual
+        A = vcat(A, p.m')
+        b = vcat(b, p.K*p.S)
+    elseif p.type == :Total
+        @constraint(model, s'*p.Q*s + p.c'*s .<= p.S)
+    end
+    @constraint(model, A*s .<= b)
+    @objective(model, Max, 0) # dummy objective
+    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV)); #> handling usage outside this package
+    set_optimizer_attribute(model, "OutputFlag", 0)
+    set_optimizer_attribute(model, "LogToConsole", 0)
+    optimize!(model)
+    if termination_status(model) != MOI.OPTIMAL
+        return false
+    end
+
+    @objective(model, Max, sum(s))
+    optimize!(model)
+    if termination_status(model) == MOI.OPTIMAL
+        return objective_value(model) > 1e-9
+    else
+        return false
+    end
+end
+
+
 # go_back only for testing purposes
 function sample_EFD(p::EnergyConstrProb, N::Int=10000, go_back::Bool=true)
+    check_feasible_EFD(p) || throw(ErrorException("Cannot sample on infeasible domain"))
     itp = make_isotropic(p)
     if p.type == :Individual
         domain = InterPolySpheres(itp.A, itp.b, [], :Individual)
@@ -86,26 +121,34 @@ function sample_EFD(p::EnergyConstrProb, N::Int=10000, go_back::Bool=true)
     if (length(samples) > N)
         samples = samples[1:N] # truncate to N samples
     end
-    return(samples)
+    return samples
 end
 
 
 # higher level wrapper for EnergyConstrProb, just specify the domains
-function volume_EFD(p::EnergyConstrProb, N::Int=10, eN::Int=1, exact::Bool=false)
+function volume_EFD(p::EnergyConstrProb, exact::Bool=false, N::Int=10, eN::Int=1)
+    check_feasible_EFD(p) || return 0.0, NaN
+
     itp = make_isotropic(p)
 
     if p.type == :Individual
         domain = InterPolySpheres(itp.A, itp.b, [], :Individual)
+        vol_full = (p.K*p.S)^p.K / (factorial(p.K) * prod(p.m))
     elseif p.type == :Total
         sp0 = Sphere(itp.yc, sqrt(itp.t))
         domain = InterPolySpheres(itp.A, itp.b, [sp0], :Total)
         exact && throw(ErrorException("Exact volume not supported for Total Energy Constraint"))
+        vol_full = vol_sphere(sp0) * det(itp.invL)
     end
 
     vol_in_y = volume_domain(domain, N, eN, exact)
     vol_in_s = vol_in_y * det(itp.invL)
-    return(vol_in_s)
+    return vol_in_s, vol_full
 end
+
+# function volume_cascade_EFD(p0::EnergyConstrProb, S_levels::Vector{Float64})
+# end
+
 
 # add other functions that study the property of EnergyConstrProb, for instance, when to have feasible solution
 

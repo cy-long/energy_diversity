@@ -1,7 +1,7 @@
 """ testing """
 
-include("src/EnergeticFeasibility.jl")
-using .EnergeticFeasibility
+include("src/EnerFeas.jl")
+using .EnerFeas
 using Random, Distributions, LinearAlgebra, Plots
 
 
@@ -50,10 +50,10 @@ show_quadratic(p, samples)
 
 #3 linear volume estimation
 p = test_linear(5, 7.5, 0.5, 4);
-volume_EFD(p, 10, 1, true)
-volume_EFD(p, 10, 1, false)
+volume_EFD(p, true, 10, 1)
+volume_EFD(p, false, 10, 1)
 
 #4 quadratic volume estimation
 p1 = test_quad(4, 8.5, 0.75, 42);
-volume_EFD(p1, 10, 1, true)
-volume_EFD(p1, 10, 1, false)
+volume_EFD(p1, true, 10, 1)
+volume_EFD(p1, false, 10, 1)

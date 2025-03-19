@@ -1,5 +1,5 @@
 """ Mainly for 2D visualization, help to understand how the geometry works and validate if the backend did the right thing and the interface correctly translate the problems"""
-""" Under construction """
+# """ Under construction """
 
 function show_chevball(p::EnergyConstrProb, go_back::Bool=true)
     # !(p.K==2) && throw(ErrorException("can only show 2D"))

@@ -97,7 +97,7 @@ function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2
     samples = vcat(samples, thread)
     end
 
-    return(samples)
+    return samples
 end
 
 function is_inside(x::Vector{Float64}, region::InterPolySpheres)
@@ -146,5 +146,5 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
         push!(vol_ratio, 1 / mean(inside_i))
     end
 
-    return(prod(vol_ratio))
+    return prod(vol_ratio)
 end
