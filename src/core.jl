@@ -10,26 +10,38 @@ For linear constraints, trianglation method is included as a comparison.
 References: ¹https://opencobra.github.io/cobrapy, ²https://doi.org/10.1073/pnas.2212061120
 ³https://doi.org/10.1016/j.comgeo.2022.101916, ⁴https://doi.org/10.1145/3194656
 """
-function min_vol_ellipsoid(po::Polyhedron)
-    pts = hcat(points(po)...)
-    ϵ = minimum_volume_ellipsoid(pts)
-    return Matrix(ϵ.H)
-end
+# function min_vol_ellipsoid(po::Polyhedron)
+#     pts = hcat(points(po)...)
+#     ϵ = minimum_volume_ellipsoid(pts)
+#     return Matrix(ϵ.H)
+# end
 
 struct Sphere
     c::Vector{Float64} # center
     r::Float64 # radius
 end
+
+function rand_sphere(sp::Sphere)
+    K = length(sp.c)
+    e = randn(K)
+    x = sp.c + rand(Uniform(0, sp.r/norm(e))) * e
+    return x
+end
+
 function vol_sphere(sp::Sphere)
     K = length(sp.c)
     return (pi^(K/2) / gamma(K/2 + 1)) * sp.r^K
+end
+
+function is_inside_sphere(x::Vector{Float64}, sp::Sphere)
+    return norm(x - sp.c) <= sp.r
 end
 
 struct InterPolySpheres
     A::Matrix{Float64}
     b::Vector{Float64}
     sps::Vector{Sphere}
-    type::Symbol # :Individual or :Total
+    type::Symbol # :indiv or :total
 end
 
 function chevball(domain::InterPolySpheres)
@@ -51,7 +63,7 @@ function chevball(domain::InterPolySpheres)
     optimize!(model)
 
     if termination_status(model) != MOI.OPTIMAL
-        error("Chevball optimization failed: $(termination_status(model))")
+        return Sphere(fill(NaN, K), 0.0) # indicate infeasible but not crash
     else
         return Sphere(value.(x), value.(r))
     end
@@ -78,15 +90,20 @@ end
 
 # regions will be intersecting domain with k*chevball(domain), whose chevball is the same as for the domain
 # therefore, no need to recompute chevball for each region, as it could be costy in time
-function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, chev_start::Sphere=chevball(region))
-    K = length(chev_start.c)
+function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, 
+    start::Union{Sphere,Vector{Vector{Float64}}}=chevball(region))
+    if isa(start, Sphere)
+        seeds = [rand_sphere(start) for _ in 1:n_threads]    
+    else
+        size(start,1) >= n_threads || throw(ErrorException("insufficient sampling seeds"))
+        seeds = start
+    end
+    
     samples = []
     burn_in = floor(Int, n_samples/2) # burn-in period
 
-    for _ in 1:n_threads
-        e = randn(K)
-        # starting from random point inside the chevball
-        x = chev_start.c + rand(Uniform(0, chev_start.r/norm(e))) * e
+    for i in 1:n_threads
+        x = seeds[i]
         thread = []
         for i in 1:n_samples
             x, _, _ = hr_step(x, region)
@@ -111,14 +128,14 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
     r = chev.r
 
     # create and sandwhich the domain
-    if domain.type == :Individual
+    if domain.type == :indiv
         po = polyhedron(hrep(domain.A, domain.b))
         if exact
             return Polyhedra.volume(po)
         end
         vertices = points(po)
         ρ = maximum([norm(v-chev.c) for v in vertices])
-    elseif domain.type == :Total
+    elseif domain.type == :total
         sp0 = domain.sps[1]
         samples_0 = hr_sample(domain, 1, 5000, chev)
         ρ = maximum([norm(x-chev.c) for x in samples_0]) # slightly dumb way to sandwhich the domain
@@ -128,10 +145,10 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
     r_phs = [r*(ρ/r)^(k/N) for k in 0:(N+eN)]
     sp_phs = [Sphere(chev.c, r_ph) for r_ph in r_phs]
 
-    if domain.type == :Individual 
-        regions = [InterPolySpheres(domain.A, domain.b, [sp], :Individual) for sp in sp_phs]
-    elseif domain.type == :Total
-        regions = [InterPolySpheres(domain.A, domain.b, [sp0, sp], :Total) for sp in sp_phs]
+    if domain.type == :indiv 
+        regions = [InterPolySpheres(domain.A, domain.b, [sp], :indiv) for sp in sp_phs]
+    elseif domain.type == :total
+        regions = [InterPolySpheres(domain.A, domain.b, [sp0, sp], :total) for sp in sp_phs]
     end
 
     # perform multiphase Monte Carlo sampling

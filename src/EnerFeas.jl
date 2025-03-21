@@ -4,12 +4,13 @@ using Random, Distributions
 using SpecialFunctions
 using LinearAlgebra
 using JuMP, Gurobi
-using Polyhedra, QHull, MinimumVolumeEllipsoids
+using Polyhedra, QHull
 using Plots
+using ProgressMeter
 
 export EnergyConstrProb
-export check_feasible_EFD, sample_EFD, volume_EFD
-export show_chevball, show_linear
+export check_feasible_EFD, sample_EFD, volume_EFD, volume_cascade_EFD
+export show_chevball, show_linear, show_quadratic
 
 const GRB_ENV = Gurobi.Env(output_flag=0)
 
@@ -30,10 +31,10 @@ end
 
 
 function create_poly(p::EnergyConstrProb)
-    if p.type == :Individual
+    if p.type == :indiv
         A = -vcat(I, p.Λ, -p.m')
         b = -vcat(zeros(p.K), p.N⁰-p.c, -p.K*p.S)
-    elseif p.type == :Total # not a finite polyhedron
+    elseif p.type == :total # not a finite polyhedron
         A = -vcat(I, p.Λ)
         b = -vcat(zeros(p.K), p.N⁰-p.c)
     end
@@ -52,18 +53,16 @@ end
 
 
 function make_isotropic(p::EnergyConstrProb)
-    if p.type == :Total
+    if p.type == :total
         L = cholesky(p.Q).U
         invL = inv(L)
         A = -vcat(I, p.Λ) * invL
         b = -vcat(zeros(p.K), p.N⁰ - p.c)
         yc = -0.5 * invL' * p.c
         t = p.S + 0.25 * p.c' * inv(p.Q) * p.c
-    elseif p.type == :Individual
-        po = create_poly(p)
-        H = min_vol_ellipsoid(po) # do we have to do this?
-        L = cholesky(H).U
-        invL = inv(L)
+    elseif p.type == :indiv
+        L = Matrix(1.0I, p.K, p.K) # freeze the transformation functionality; not needed and causing issues
+        invL = L
         A = -vcat(I, p.Λ, -p.m') * invL
         b = -vcat(zeros(p.K), p.N⁰ - p.c, -p.K*p.S)
         yc = fill(NaN, p.K); t = NaN
@@ -77,10 +76,10 @@ function check_feasible_EFD(p::EnergyConstrProb)
     model = Model()
     @variable(model, s[i = 1:p.K])
 
-    if p.type == :Individual
+    if p.type == :indiv
         A = vcat(A, p.m')
         b = vcat(b, p.K*p.S)
-    elseif p.type == :Total
+    elseif p.type == :total
         @constraint(model, s'*p.Q*s + p.c'*s .<= p.S)
     end
     @constraint(model, A*s .<= b)
@@ -107,11 +106,11 @@ end
 function sample_EFD(p::EnergyConstrProb, N::Int=10000, go_back::Bool=true)
     check_feasible_EFD(p) || throw(ErrorException("Cannot sample on infeasible domain"))
     itp = make_isotropic(p)
-    if p.type == :Individual
-        domain = InterPolySpheres(itp.A, itp.b, [], :Individual)
-    elseif p.type == :Total
+    if p.type == :indiv
+        domain = InterPolySpheres(itp.A, itp.b, [], :indiv)
+    elseif p.type == :total
         sp0 = Sphere(itp.yc, sqrt(itp.t))
-        domain = InterPolySpheres(itp.A, itp.b, [sp0], :Total)
+        domain = InterPolySpheres(itp.A, itp.b, [sp0], :total)
     end
     nt = 10; ns = ceil(Int, 2*N/nt) #TODO: find the best nt and ns
     samples = hr_sample(domain, nt, ns, chevball(domain))
@@ -131,12 +130,13 @@ function volume_EFD(p::EnergyConstrProb, exact::Bool=false, N::Int=10, eN::Int=1
 
     itp = make_isotropic(p)
 
-    if p.type == :Individual
-        domain = InterPolySpheres(itp.A, itp.b, [], :Individual)
+    if p.type == :indiv
+        domain = InterPolySpheres(itp.A, itp.b, [], :indiv)
         vol_full = (p.K*p.S)^p.K / (factorial(p.K) * prod(p.m))
-    elseif p.type == :Total
+
+    elseif p.type == :total
         sp0 = Sphere(itp.yc, sqrt(itp.t))
-        domain = InterPolySpheres(itp.A, itp.b, [sp0], :Total)
+        domain = InterPolySpheres(itp.A, itp.b, [sp0], :total)
         exact && throw(ErrorException("Exact volume not supported for Total Energy Constraint"))
         vol_full = vol_sphere(sp0) * det(itp.invL)
     end
@@ -146,13 +146,46 @@ function volume_EFD(p::EnergyConstrProb, exact::Bool=false, N::Int=10, eN::Int=1
     return vol_in_s, vol_full
 end
 
-# function volume_cascade_EFD(p0::EnergyConstrProb, S_levels::Vector{Float64})
-# end
+
+# p0: domain of the last (biggest) region, S_range: increasing range of total supply values
+function volume_cascade_EFD(p0::EnergyConstrProb, S_range::Vector{Float64}, α::Float64=0.5)
+    p0.type == :indiv && throw(ErrorException("Cascade volume not supported for Individual Energy Constraint"))
+    S_range[1] > S_range[end] || reverse!(S_range)
+    
+    itp = make_isotropic(p0)
+    quadbounds = [Sphere(itp.yc, sqrt(itp.t + S - p0.S)) for S in S_range]
+    regions = [InterPolySpheres(itp.A, itp.b, [q], :total) for q in quadbounds]
+    balls = [chevball(r) for r in regions]
+    
+    volumes = [0.0 for _ in S_range]
+    volumes[1] = volume_domain(regions[1], 10, 1, true); r = 1.0
+    
+    pbar = Progress(length(regions); desc="Volume: $(S_range[end]) to $(S_range[1])")
+    for i in eachindex(regions)
+        if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
+            break
+        end
+        samples_i = hr_sample(regions[i], 10, 5000, balls[i])
+        inside_R_ii = [is_inside(s, regions[i+1]) for s in samples_i]
+        r = mean(inside_R_ii)
+        b = mean([is_inside_sphere(s, balls[i+1]) for s in samples_i])
+        volumes[i+1] = α * (volumes[i] *r) + (1-α) * (vol_sphere(balls[i+1]) * r / b)
+        next!(pbar)
+    end
+    reverse!(S_range); reverse!(volumes)
+    volumes[isnan.(volumes)] .= 0.0
+    return volumes * det(itp.invL) # transform back to s space
+end
 
 
 # add other functions that study the property of EnergyConstrProb, for instance, when to have feasible solution
 
 include("core.jl")
+include("network.jl")
 include("visualization.jl")
 
+
+# for development!!
+export IsoTrans, create_poly, make_isotropic, Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain
+export generate_trophic, test_proport, test_linear, test_quadratic, test_allom
 end

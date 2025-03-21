@@ -50,7 +50,7 @@ function purely_competitive()
 end
 
 function generate_trophic(type::String)
-    if type == "hierarchy"
+    if type == "chain"
         σ = purely_hierarchy()
     elseif type == "omnivory"
         σ = omnivory()
@@ -63,6 +63,38 @@ function generate_trophic(type::String)
     end
     return σ
 end
+
+
+# These "test_" functions are truly an interface from σ, d, m to the EnergyConstrProb!
+# They can only be used for K=3 now
+# Use them utill we update the interface properly (plan to give interface for adding customized constraints)
+function test_proport(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64)
+    K = 3; d = fill(0.0, K); N⁰ = fill(0.0, K)
+    Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
+    return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:indiv)
+end
+
+function test_linear(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64)
+    K = 3; d = fill(1.0, K); N⁰ = fill(1.0, K); 
+    Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
+    return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:indiv)
+end
+
+function test_quadratic(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64, ϵ::Float64=0.8)
+    c = minimum(eigvals((σ + σ')/2), init=0.0)
+    σ += Diagonal(fill((-c + ϵ), 3))
+    
+    K = 3; d = fill(0.1, K); N⁰ = fill(0.2, K); # different critical values for d and N⁰
+    Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
+    return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:total)
+end
+
+function test_allom(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64, γ::Float64=-0.25)
+    K = 3; d = m .^ γ; N⁰ = m .^ (1+γ)
+    Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
+    return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:indiv)
+end
+
 
 # Calculate the baseline supply needed to sustain the ecosystem with least biomass (averaged by K)
 baseline_supply(p::EnergyConstrProb) = sum(p.d + inv(p.Λ) * p.N⁰) / p.K
