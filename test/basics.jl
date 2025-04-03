@@ -1,15 +1,15 @@
-""" testing """
+""" Testing basic functionality """
 
-include("src/EnerFeas.jl")
+include("../src/EnerFeas.jl")
 using .EnerFeas
 using Random, Distributions, LinearAlgebra, Plots
 
 
-m0 = fill(1.0,3)
-
 #1 sampling linear constraint domain
-σ1 = generate_trophic("chain")
-p1 = test_linear(σ1, m0, 3.5);
+ec1 = ecosys_config(K=3, S_type=:indiv, seed=24);
+σ1 = generate_sigma_arrays(ec1, 1) 
+p1 = generate_problem(ec1, σ1); p1.S = 4.5;
+
 samples1 = sample_EFD(p1, 15000);
 
 plot(ratio=1)
@@ -17,8 +17,10 @@ show_linear(p1, samples1)
 show_chevball(p1)
 
 #2 sampling quadratic constraint domain
-σ2 = generate_trophic("exploitative")
-p2 = test_quadratic(σ2, m0, 6.0, 0.75);
+ec2 = ecosys_config(K=2, S_type=:total, seed=12);
+σ2 = generate_sigma_arrays(ec2, 1);
+p2 = generate_problem(ec2, σ2); p2.S = 6.0;
+
 samples2 = sample_EFD(p2, 15000);
 
 plot(ratio=1)

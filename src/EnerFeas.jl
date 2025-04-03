@@ -5,12 +5,10 @@ using SpecialFunctions
 using LinearAlgebra
 using JuMP, Gurobi
 using Polyhedra, QHull
-using Plots
-using ProgressMeter
+using Plots, ProgressMeter
 
-export EnergyConstrProb
+export EnergyConstrProb, EcosysConfig
 export check_feasible_EFD, sample_EFD, volume_EFD, volume_cascade_EFD
-export show_chevball, show_linear, show_quadratic
 
 const GRB_ENV = Gurobi.Env(output_flag=0)
 
@@ -29,6 +27,15 @@ mutable struct EnergyConstrProb{T}
     type::Symbol # specify the type of constraint
 end
 
+# linear transformed model using L; variables are defined at y instead of s space also.
+struct IsoTrans
+    L::Matrix{Float64} # Cholesky upper matrix, Q=L'L
+    invL::Matrix{Float64} # inverse of L
+    yc::Vector{Float64} # transformed center of sphere
+    t::Float64 # square of radius of sphere
+    A::Matrix{Float64} # transformed linear constraints
+    b::Vector{Float64} # linear constraints constants
+end
 
 function create_poly(p::EnergyConstrProb)
     if p.type == :indiv
@@ -40,17 +47,6 @@ function create_poly(p::EnergyConstrProb)
     end
     return polyhedron(hrep(A, b))
 end
-
-# linear transformed model using L; variables are defined at y instead of s space also.
-struct IsoTrans
-    L::Matrix{Float64} # Cholesky upper matrix, Q=L'L
-    invL::Matrix{Float64} # inverse of L
-    yc::Vector{Float64} # transformed center of sphere
-    t::Float64 # square of radius of sphere
-    A::Matrix{Float64} # transformed linear constraints
-    b::Vector{Float64} # linear constraints constants
-end
-
 
 function make_isotropic(p::EnergyConstrProb)
     if p.type == :total
@@ -160,8 +156,7 @@ function volume_cascade_EFD(p0::EnergyConstrProb, S_range::Vector{Float64}, α::
     volumes = [0.0 for _ in S_range]
     volumes[1] = volume_domain(regions[1], 10, 1, true); r = 1.0
     
-    pbar = Progress(length(regions); desc="Volume: $(S_range[end]) to $(S_range[1])")
-    for i in eachindex(regions)
+    @showprogress desc="Volume: $(S_range[end]) to $(S_range[1])" for i in eachindex(regions)
         if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
             break
         end
@@ -169,23 +164,23 @@ function volume_cascade_EFD(p0::EnergyConstrProb, S_range::Vector{Float64}, α::
         inside_R_ii = [is_inside(s, regions[i+1]) for s in samples_i]
         r = mean(inside_R_ii)
         b = mean([is_inside_sphere(s, balls[i+1]) for s in samples_i])
-        volumes[i+1] = α * (volumes[i] *r) + (1-α) * (vol_sphere(balls[i+1]) * r / b)
-        next!(pbar)
+        volumes[i+1] = α * (volumes[i] * r) + (1 - α) * (vol_sphere(balls[i+1]) * r / b)
     end
+    println("")
+
     reverse!(S_range); reverse!(volumes)
     volumes[isnan.(volumes)] .= 0.0
     return volumes * det(itp.invL) # transform back to s space
 end
 
-
-# add other functions that study the property of EnergyConstrProb, for instance, when to have feasible solution
-
 include("core.jl")
-include("network.jl")
-include("visualization.jl")
+include("generate.jl")
+include("visualize.jl")
 
 
-# for development!!
-export IsoTrans, create_poly, make_isotropic, Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain
-export generate_trophic, test_proport, test_linear, test_quadratic, test_allom
+# temporarily for development!!
+export IsoTrans, create_poly, make_isotropic, Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, show_linear, show_quadratic, grow_quadratic
+
+export ecosys_config, generate_sigma_arrays, generate_problem, baseline_supply
+
 end

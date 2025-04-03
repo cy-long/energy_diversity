@@ -1,4 +1,7 @@
-include("src/EnerFeas.jl");
+""" How does different motifs in K=3 affects the V(S) response? """
+# Let's focusing on the behavior of V(S) and igonore the different in trophic structures 
+
+include("../src/EnerFeas.jl");
 using .EnerFeas
 using Random, Distributions, LinearAlgebra, Plots, StatsPlots
 using DataFrames
@@ -6,8 +9,7 @@ using ProgressMeter
 using IterTools
 
 
-
-#2 --------- Comparision inside trophic chains ---------
+# generate σ matrices
 Random.seed!(1010)
 tr_types = ["chain", "omnivory", "exploitative", "competitive"]
 σs = Dict(
@@ -17,7 +19,7 @@ cm = Dict(
     "chain" => :red, "omnivory" => :blue, "exploitative" => :green, "competitive" => :purple
 )
 
-#2.1 --------- Test linear domains --------- 
+# linear domains
 df_linear = DataFrame(rep_id=Int[], tr_type=String[], S=Float64[], norm_vol=Float64[], vol_d=Float64[], vol_sim=Float64[])
 S_levels = 0.0:0.05:20.0;
 
@@ -113,8 +115,6 @@ CSV.write("analysis/trophic_linear_am.csv", df_linear)
 # plot!(size=(800, 600), titlefont_size=16, legendfont_size=12)
 # savefig(plot_path)
 
-
-
 # using CSV
 # CSV.write("analysis/trophic_data_linear.csv", df_linear)
 # CSV.write("analysis/trophic_data_quadratic_dN.csv", df_quadratic)
@@ -143,7 +143,3 @@ CSV.write("analysis/trophic_linear_am.csv", df_linear)
 # plot(df_plain.S_ind, df_plain.norm_vol, group=df_plain.rep_id,
 #     xlabel="S_ind", ylabel="norm_vol", title="Proportional",
 #     legend=:topright, label=false, markersize=2, color = :grey)
-
-
-
-#4 ---- casecade estimation ---- Will that amplify the error?

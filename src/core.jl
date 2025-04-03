@@ -158,7 +158,7 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
             push!(vol_ratio, vol_sphere(sp_phs[i]))
             continue
         end
-        samples_i = hr_sample(regions[i], 10, 5000, chev) #TODO: start chains from previous samples, instead of chevball
+        samples_i = hr_sample(regions[i], 10, 5000, chev)
         inside_i = [is_inside(x, regions[i-1]) for x in samples_i]
         push!(vol_ratio, 1 / mean(inside_i))
     end

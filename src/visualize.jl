@@ -56,3 +56,46 @@ function show_quadratic(
         color=color_pts, markersize=1.5, markerstrokewidth=0, ratio=1
     )
 end
+
+
+function grow_quadratic(
+    p0::Union{EnergyConstrProb,Nothing}=nothing,
+    St::Float64=p0.S,
+    plt=nothing
+)
+    if plt === nothing
+        plt = plot()  # Create new plot if none provided
+    end
+
+    go_back = false
+    color_line = go_back ? "blue" : "orange"
+
+    p0.S = St
+
+    L = cholesky(p0.Q).U; invL = inv(L)
+    A = -vcat(I, p0.Λ) * invL
+    b = -vcat(zeros(p0.K), p0.N⁰ - p0.c)
+    yc = -0.5 * invL' * p0.c
+    t = St + 0.25 * p0.c' * inv(p0.Q) * p0.c
+
+    θ = 0:0.001:2π
+    x_sp = yc[1] .+ sqrt(t) * cos.(θ)
+    y_sp = yc[2] .+ sqrt(t) * sin.(θ)
+    
+    if go_back 
+        x_sp_tmp = invL[1,1] * x_sp .+ invL[1,2] * y_sp
+        y_sp = invL[2,1] * x_sp .+ invL[2,2] * y_sp
+        x_sp = x_sp_tmp
+    end
+
+    plot!(plt, x_sp, y_sp, color=color_line, linewidth=3)
+
+    samples = sample_EFD(p0, 1000, go_back)
+    scatter!(
+        plt,
+        [s[1] for s in samples], [s[2] for s in samples], 
+        color=color_line, markersize=1.5, markerstrokewidth=0, ratio=1
+    )
+
+    return plt
+end

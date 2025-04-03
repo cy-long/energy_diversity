@@ -28,4 +28,5 @@ updatelog.md
 .vscode/**
 archive/**
 analysis/**
+postanalysis/**
 figures/**
