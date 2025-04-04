@@ -7,9 +7,6 @@ using JuMP, Gurobi
 using Polyhedra, QHull
 using Plots, ProgressMeter
 
-export EnergyConstrProb, EcosysConfig
-export check_feasible_EFD, sample_EFD, volume_EFD, volume_cascade_EFD
-
 const GRB_ENV = Gurobi.Env(output_flag=0)
 
 # instead of "problem", these are just paramers. We need to reconfigurate this. 
@@ -149,7 +146,7 @@ function volume_cascade_EFD(p0::EnergyConstrProb, S_range::Vector{Float64}, α::
     S_range[1] > S_range[end] || reverse!(S_range)
     
     itp = make_isotropic(p0)
-    quadbounds = [Sphere(itp.yc, sqrt(itp.t + S - p0.S)) for S in S_range]
+    quadbounds = [Sphere(itp.yc, sqrt(itp.t + S - p0.S)) for S in S_range] # p0.S offsets itp.t
     regions = [InterPolySpheres(itp.A, itp.b, [q], :total) for q in quadbounds]
     balls = [chevball(r) for r in regions]
     
@@ -173,14 +170,28 @@ function volume_cascade_EFD(p0::EnergyConstrProb, S_range::Vector{Float64}, α::
     return volumes * det(itp.invL) # transform back to s space
 end
 
+# Calculate the baseline supply needed to sustain the ecosystem with least biomass
+baseline_supply(p::EnergyConstrProb) = dot(p.Λ * p.N⁰ + p.d, p.N⁰)
+
+# Calculate the individual supply at state s (averaged by K)
+individual_supply(s::Vector{Float64}, p::EnergyConstrProb) = dot(s, p.m) / p.K
+
+# Calculate the total supply at state s (weighed by N)
+total_supply(s::Vector{Float64}, p::EnergyConstrProb) = transpose(s) * p.Λ * (s - p.d)
+
 include("core.jl")
 include("generate.jl")
 include("visualize.jl")
 
+export EnergyConstrProb, EcosysConfig
+export check_feasible_EFD, sample_EFD, volume_EFD, volume_cascade_EFD
+export baseline_supply
+export ecosys_config, generate_sigma_arrays, generate_problem
 
-# temporarily for development!!
-export IsoTrans, create_poly, make_isotropic, Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, show_linear, show_quadratic, grow_quadratic
-
-export ecosys_config, generate_sigma_arrays, generate_problem, baseline_supply
+# ---- these exports for temporary development only ----
+export show_linear, show_quadratic
+export IsoTrans, create_poly, make_isotropic
+export Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, grow_quadratic
+# ---- ----
 
 end

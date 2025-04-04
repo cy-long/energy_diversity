@@ -174,11 +174,3 @@ end
 # end
 
 
-# Calculate the baseline supply needed to sustain the ecosystem with least biomass
-baseline_supply(p::EnergyConstrProb) = dot(p.Λ * p.N⁰ + p.d, p.N⁰)
-
-# Calculate the individual supply at state s (averaged by K)
-individual_supply(s::Vector{Float64}, p::EnergyConstrProb) = dot(s, p.m) / p.K
-
-# Calculate the total supply at state s (weighed by N)
-total_supply(s::Vector{Float64}, p::EnergyConstrProb) = transpose(s) * p.Λ * (s - p.d)
