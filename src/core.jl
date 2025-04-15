@@ -83,9 +83,12 @@ function hr_step(x::Vector{Float64}, region::InterPolySpheres)
 
     λ_min = isempty(λs[λs .< 0]) ? 0 : maximum(λs[λs .< 0])
     λ_max = isempty(λs[λs .> 0]) ? 0 : minimum(λs[λs .> 0])
-    λ = rand(Uniform(λ_min, λ_max))
-
-    return x + λ * Δ, λ_min, λ_max
+    if λ_min < λ_max-1e-7
+        λ = rand(Uniform(λ_min, λ_max))
+        return x + λ * Δ
+    else
+        return nothing
+    end
 end
 
 # regions will be intersecting domain with k*chevball(domain), whose chevball is the same as for the domain
@@ -106,14 +109,17 @@ function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2
         x = seeds[i]
         thread = []
         for i in 1:n_samples
-            x, _, _ = hr_step(x, region)
+            x = hr_step(x, region)
+            if isnothing(x)
+                x = hr_step(seeds[i], region)
+                @warn "HR failed, restart at seeds"
+            end
             if i > burn_in
                 push!(thread, x) #TODO: thinning?
             end
         end
     samples = vcat(samples, thread)
     end
-
     return samples
 end
 
@@ -126,6 +132,10 @@ end
 function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bool=false)
     chev = chevball(domain)
     r = chev.r
+    if r == 0.0 
+        @warn "Chevball is infeasible in volume_domain"
+        return 0.0
+    end
 
     # create and sandwhich the domain
     if domain.type == :indiv

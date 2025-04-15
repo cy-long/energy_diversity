@@ -3,7 +3,7 @@
 
 function show_chevball(p::EnergyConstrProb, go_back::Bool=true)
     # !(p.K==2) && throw(ErrorException("can only show 2D"))
-    itp = make_isotropic(p)
+    itp = translate_EFD(p)
     if p.type == :indiv
         domain = InterPolySpheres(itp.A, itp.b, [], :indiv)
     elseif p.type == :total
@@ -50,11 +50,14 @@ function show_quadratic(
 )
     go_back = true # temporarily always plot in s-space
     go_back ? color_pts = "blue" : color_pts = "orange"
-
+    
+    plt = plot()
     !isnothing(samples) && scatter!(
+        plt,
         [s[1] for s in samples], [s[2] for s in samples], 
         color=color_pts, markersize=1.5, markerstrokewidth=0, ratio=1
     )
+    return plt
 end
 
 

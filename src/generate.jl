@@ -9,7 +9,7 @@ struct EcosysConfig
     conne::Float64
     energetive::Bool
     dissipative::Bool
-    m_param::Union{Float64, Symbol}
+    k_param::Union{Float64, Symbol}
     d_param::Union{Float64, Symbol}
     N0_param::Union{Float64, Symbol}
     ϵ::Float64
@@ -18,14 +18,14 @@ struct EcosysConfig
 end
 
 #export
-function ecosys_config(;K::Int, S_type::Symbol, conne::Float64=0.5, energetive::Bool=false, dissipative::Bool=true, m_param=:identical, d_param=:identical, N0_param=:identical, ϵ=0.5, γ=-0.25, seed=nothing)
-    (0.0 < conne < 1.0) || error("connectance must be between 0 and 1")
+function ecosys_config(;K::Int, S_type::Symbol, conne::Float64=0.5, energetive::Bool=false, dissipative::Bool=true, k_param=:identical, d_param=:identical, N0_param=:identical, ϵ=0.5, γ=-0.25, seed=nothing)
+    (0.0 < conne <= 1.0) || error("connectance must be between 0 and 1")
     S_type in [:indiv, :total] || error("S_type must be :indiv or :total")
-    m_param in [:identical, :lognormal] || m_param isa Float64 || error("Invalid m_param")
+    k_param in [:unit, :identical, :normal] || k_param isa Float64 || error("Invalid k_param")
     d_param in [:identical, :lognormal, :allometric] || d_param isa Float64 || error("Invalid d_param")
-    N0_param in [:identical, :lognormal, :allometric] || N0_param isa Float64 || error("Invalid N0_param")
+    N0_param in [:identical, :lognormal] || N0_param isa Float64 || error("Invalid N0_param")
 
-    return EcosysConfig(K, S_type, conne, energetive, dissipative, m_param, d_param, N0_param, ϵ, γ, seed)
+    return EcosysConfig(K, S_type, conne, energetive, dissipative, k_param, d_param, N0_param, ϵ, γ, seed)
 end
 
 
@@ -43,7 +43,7 @@ function make_energetive(σ::Matrix{Float64}) #ensuring + > -
     return σ
 end
 
-function make_dissipative(σ::Matrix{Float64}, ϵ::Float64=0.5)
+function make_dissipative(σ::Matrix{Float64}, ϵ::Float64=0.25)
     c = minimum(eigvals((σ + σ')/2), init=0.0)
     σ = σ .+ Diagonal(fill((-c + ϵ), size(σ, 1)))
     return σ
@@ -71,13 +71,13 @@ function generate_sigma(K::Int, energetive::Bool, dissipative::Bool, c::Float64=
     return σ
 end
 
-function generate_bodymass(K::Int, m_param::Union{Float64, Symbol})
-    if m_param isa Float64
-        return fill(m_param, K)
-    elseif m_param == :identical
-        return fill(1.0, K)
-    elseif m_param == :lognormal
+function generate_k(K::Int, k_param::Union{Float64, Symbol})
+    if k_param isa Float64
+        return fill(k_param, K)
+    elseif k_param == :lognormal
         return exp.(randn(K))
+    elseif k_param == :unit
+        return fill(1.0, K)
     end
 end
 
@@ -88,7 +88,7 @@ function generate_demands(K::Int, d_param::Union{Float64, Symbol}, m::Vector{Flo
     elseif d_param == :identical
         return fill(1.0, K)
     elseif d_param == :lognormal
-        return exp.(randn(K))
+        return 0.2*exp.(randn(K))
     elseif d_param == :allometric
         return m .^ γ
     end
@@ -100,9 +100,7 @@ function generate_N0(K::Int, N0_param::Union{Float64, Symbol}, m::Vector{Float64
     elseif N0_param == :identical
         return fill(1.0, K)
     elseif N0_param == :lognormal # we may want to rescale this
-        return exp.(randn(K))
-    elseif N0_param == :allometric
-        return m .^ (1 + γ)
+        return rand(LogNormal(-0.5, 1.0), K)
     end
 end
 
@@ -118,18 +116,14 @@ end
 
 #export
 function generate_problem(ec::EcosysConfig, σ::Matrix{Float64})
-    m = generate_bodymass(ec.K, ec.m_param)
-    d = generate_demands(ec.K, ec.d_param, m, ec.γ)
-    N⁰ = generate_N0(ec.K, ec.N0_param, m, ec.γ)
+    # m = fill(0.0, ec.K) # dummy now, think later with allometric
+    k = generate_k(ec.K, ec.k_param)
+    N⁰ = generate_N0(ec.K, ec.N0_param, fill(0.0, ec.K), ec.γ)
+    d = generate_demands(ec.K, ec.d_param, N⁰, ec.γ)
     Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
     S = 0.0
-    return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,ec.K,S,ec.S_type)
+    return EnergyConstrProb(σ,Λ,Q,c,k,d,N⁰,ec.K,S,ec.S_type)
 end
-
-
-
-
-
 
 
 # function test_proport(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64)

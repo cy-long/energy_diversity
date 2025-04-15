@@ -6,10 +6,11 @@ using Random, Distributions, LinearAlgebra, Plots
 
 
 #1 sampling linear constraint domain
-ec1 = ecosys_config(K=3, S_type=:indiv, seed=24);
-σ1 = generate_sigma_arrays(ec1, 1) 
-p1 = generate_problem(ec1, σ1); p1.S = 4.5;
+ec1 = ecosys_config(K=3, S_type=:indiv, seed=24, N0_param=0.2);
+σ1 = generate_sigma_arrays(ec1, 1);
+p1 = generate_problem(ec1, σ1); p1.S = 7.5;
 
+check_feasible_EFD(p1)
 samples1 = sample_EFD(p1, 15000);
 
 plot(ratio=1)
