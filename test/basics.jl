@@ -1,9 +1,8 @@
-""" Testing basic functionality """
+""" Test basic functionality """
 
 include("../src/EnerFeas.jl")
 using .EnerFeas
 using Random, Distributions, LinearAlgebra, Plots
-
 
 #1 sampling linear constraint domain
 ec1 = ecosys_config(K=3, S_type=:indiv, seed=24, N0_param=0.2);
@@ -23,14 +22,12 @@ ec2 = ecosys_config(K=2, S_type=:total, seed=12);
 p2 = generate_problem(ec2, σ2); p2.S = 6.0;
 
 samples2 = sample_EFD(p2, 15000);
-
 plot(ratio=1)
 show_quadratic(p2, samples2)
 
-#3 linear volume estimation
+#3 linear volume estimation (analytical and numerical)
 volume_EFD(p1, true, 10, 1)
 volume_EFD(p1, false, 10, 1)
 
-#4 quadratic volume estimation
-volume_EFD(p2, true, 10, 1) # error
+#4 quadratic volume estimation (numerical only)
 volume_EFD(p2, false, 10, 1)

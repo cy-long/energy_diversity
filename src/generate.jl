@@ -1,11 +1,12 @@
-"""A full workflow to generate theoretical ecological systems"""
+"""The toolset to generate theoretical ecological systems"""
 
 # using .EnerFeas: EnergyConstrProb
-
 # config can be used at different stages, should essentially contain all the possibilities
 struct EcosysConfig
     K::Int
     S_type::Symbol
+    n_scale::Float64
+    n_var::Float64
     conne::Float64
     energetive::Bool
     dissipative::Bool
@@ -17,59 +18,78 @@ struct EcosysConfig
     seed::Union{Nothing, Int}
 end
 
-#export
-function ecosys_config(;K::Int, S_type::Symbol, conne::Float64=0.5, energetive::Bool=false, dissipative::Bool=true, k_param=:identical, d_param=:identical, N0_param=:identical, ϵ=0.5, γ=-0.25, seed=nothing)
+function ecosys_config(;K::Int, S_type::Symbol, n_scale::Float64=1.0, n_var::Float64=1.0, conne::Float64=1.0, energetive::Bool=false, dissipative::Bool=true, k_param=:identical, d_param=:identical, N0_param=:identical, ϵ=0.5, γ=-0.25, seed=nothing)
     (0.0 < conne <= 1.0) || error("connectance must be between 0 and 1")
     S_type in [:indiv, :total] || error("S_type must be :indiv or :total")
     k_param in [:unit, :identical, :normal] || k_param isa Float64 || error("Invalid k_param")
     d_param in [:identical, :lognormal, :allometric] || d_param isa Float64 || error("Invalid d_param")
     N0_param in [:identical, :lognormal] || N0_param isa Float64 || error("Invalid N0_param")
 
-    return EcosysConfig(K, S_type, conne, energetive, dissipative, k_param, d_param, N0_param, ϵ, γ, seed)
+    return EcosysConfig(K, S_type, n_scale, n_var, conne, energetive, dissipative, k_param, d_param, N0_param, ϵ, γ, seed)
 end
 
-
-function make_energetive(σ::Matrix{Float64}) #ensuring + > -
-    for a in CartesianIndices(σ) 
-        i,j = a[1],a[2]
+function make_energetive!(σ::Matrix{Float64})  # modifies σ in-place
+    for a in CartesianIndices(σ)
+        i, j = a[1], a[2]
         if σ[i,j] < 0 && σ[j,i] > 0
-            x,y = sort(abs.([σ[i,j], σ[j,i]]))
-            σ[i,j] = -x; σ[j,i] = +y;
+            x, y = sort(abs.([σ[i,j], σ[j,i]]))
+            σ[i,j] = -x
+            σ[j,i] =  y
         elseif σ[i,j] > 0 && σ[j,i] < 0
-            x,y = sort(abs.([σ[i,j], σ[j,i]]))
-            σ[i,j] = +y; σ[j,i] = -x;
+            x, y = sort(abs.([σ[i,j], σ[j,i]]))
+            σ[i,j] =  y
+            σ[j,i] = -x
         end
     end
-    return σ
+    return nothing
 end
 
-function make_dissipative(σ::Matrix{Float64}, ϵ::Float64=0.25)
-    c = minimum(eigvals((σ + σ')/2), init=0.0)
-    σ = σ .+ Diagonal(fill((-c + ϵ), size(σ, 1)))
-    return σ
+function make_dissipative!(σ::Matrix{Float64}, ϵ::Float64=0.25)
+    c = minimum(eigvals((σ + σ') / 2), init=0.0)
+    shift = -c + ϵ
+    for i in 1:size(σ, 1)
+        σ[i, i] += shift
+    end
+    return nothing
 end
 
-function impose_connectance(σ::Matrix{Float64}, c::Float64=1.0)
+function impose_connectance!(σ::Matrix{Float64}, c::Float64=1.0)
     K = size(σ, 1)
-    mask = trues(K, K)
     for i in 1:K, j in 1:K
-        if i != j
-            mask[i, j] = rand() < c
+        if i != j && rand() ≥ c
+            σ[i, j] = 0.0
         end
     end
-    return σ .* mask
+    return nothing
 end
 
-function generate_sigma(K::Int, energetive::Bool, dissipative::Bool, c::Float64=1.0)
-    σ = impose_connectance(randn(K,K), c)
+function generate_sigma(K::Int, energetive::Bool, dissipative::Bool, n_scale::Float64=1.0, n_var::Float64=1.0, c::Float64=1.0)
+    σ = rand(Normal(0,n_var),K,K)
+    if c < 1.0
+        impose_connectance!(σ, c)
+    end
     if energetive 
-        return make_energetive(σ)
+        make_energetive!(σ)
     end
     if dissipative 
-        return make_dissipative(σ)
+        make_dissipative!(σ)
     end
+    return n_scale * σ
+end
+
+function generate_trophic(K::Int, n_scale::Float64=1.0, n_var::Float64=1.0, effi_mean::Float64=0.5, effi_var::Float64=0.1)
+    σ = abs.(Matrix(Diagonal(rand(Normal(0, n_var),K))))
+    uptake = n_scale * abs.(rand(Normal(0, n_var), K-1))
+    effi = rand(Normal(effi_mean, effi_var), K-1); effi[effi .< 0.0] .= 0.0
+    intake = -effi .* uptake
+    for i in 1:K-1
+        σ[i, i+1] = uptake[i]
+        σ[i+1, i] = intake[i]
+    end
+    make_dissipative!(σ)
     return σ
 end
+
 
 function generate_k(K::Int, k_param::Union{Float64, Symbol})
     if k_param isa Float64
@@ -81,7 +101,7 @@ function generate_k(K::Int, k_param::Union{Float64, Symbol})
     end
 end
 
-# need to change pipeline if further tailering lognormal is needed
+# need to change pipeline if lognormal is needed
 function generate_demands(K::Int, d_param::Union{Float64, Symbol}, m::Vector{Float64}, γ::Float64=-0.25)
     if d_param isa Float64
         return fill(d_param, K)  
@@ -104,17 +124,15 @@ function generate_N0(K::Int, N0_param::Union{Float64, Symbol}, m::Vector{Float64
     end
 end
 
-#export
 function generate_sigma_arrays(ec::EcosysConfig, n_samples::Int=100)
     isnothing(ec.seed) || Random.seed!(ec.seed)
-    σs = [generate_sigma(ec.K, ec.energetive, ec.dissipative, ec.conne) for _ in 1:n_samples]
+    σs = [generate_sigma(ec.K, ec.energetive, ec.dissipative, ec.n_scale, ec.n_var, ec.conne) for _ in 1:n_samples]
     if n_samples == 1
         σs = σs[1]
     end
     return σs
 end
 
-#export
 function generate_problem(ec::EcosysConfig, σ::Matrix{Float64})
     # m = fill(0.0, ec.K) # dummy now, think later with allometric
     k = generate_k(ec.K, ec.k_param)
@@ -124,47 +142,3 @@ function generate_problem(ec::EcosysConfig, σ::Matrix{Float64})
     S = 0.0
     return EnergyConstrProb(σ,Λ,Q,c,k,d,N⁰,ec.K,S,ec.S_type)
 end
-
-
-# function test_proport(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64)
-#     size(σ,2) != length(m) && throw(ArgumentError("dimension mismatch between σ and m"))
-#     K = size(σ,2); d = fill(0.0, K); N⁰ = fill(0.0, K)
-#     Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
-#     return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:indiv)
-# end
-
-# function test_linear(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64)
-#     size(σ,2) != length(m) && throw(ArgumentError("dimension mismatch between σ and m"))
-#     K = size(σ,2); d = fill(1.0, K); N⁰ = fill(1.0, K); 
-#     Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
-#     return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:indiv)
-# end
-
-# function test_quadratic(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64, ϵ::Float64=0.8)
-#     size(σ,2) != length(m) && throw(ArgumentError("dimension mismatch between σ and m"))
-#     K = size(σ, 2)
-#     c = minimum(eigvals((σ + σ')/2), init=0.0)
-#     σ += Diagonal(fill((-c + ϵ), K))
-#     d = fill(0.1, K); N⁰ = fill(0.2, K); # different critical values for d and N⁰
-#     Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
-#     return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:total)
-# end
-
-# function test_linear_compare(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64, ϵ::Float64=0.8)
-#     size(σ,2) != length(m) && throw(ArgumentError("dimension mismatch between σ and m"))
-#     K = size(σ, 2)
-#     c = minimum(eigvals((σ + σ')/2), init=0.0)
-#     σ += Diagonal(fill((-c + ϵ), K))
-#     d = fill(0.1, K); N⁰ = fill(0.2, K); # different critical values for d and N⁰
-#     Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
-#     return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:linear)
-# end
-
-# function test_allom(σ::Matrix{Float64}, m::Vector{Float64}, S::Float64, γ::Float64=-0.25)
-#     size(σ,2) != length(m) && throw(ArgumentError("dimension mismatch between σ and m"))
-#     K = size(σ, 2); d = m .^ γ; N⁰ = m .^ (1+γ)
-#     Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
-#     return EnergyConstrProb(σ,Λ,Q,c,m,d,N⁰,K,S,:indiv)
-# end
-
-

@@ -10,11 +10,6 @@ For linear constraints, trianglation method is included as a comparison.
 References: ¹https://opencobra.github.io/cobrapy, ²https://doi.org/10.1073/pnas.2212061120
 ³https://doi.org/10.1016/j.comgeo.2022.101916, ⁴https://doi.org/10.1145/3194656
 """
-# function min_vol_ellipsoid(po::Polyhedron)
-#     pts = hcat(points(po)...)
-#     ϵ = minimum_volume_ellipsoid(pts)
-#     return Matrix(ϵ.H)
-# end
 
 struct Sphere
     c::Vector{Float64} # center
@@ -168,7 +163,7 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
             push!(vol_ratio, vol_sphere(sp_phs[i]))
             continue
         end
-        samples_i = hr_sample(regions[i], 10, 5000, chev)
+        samples_i = hr_sample(regions[i], 20, 10000, chev)
         inside_i = [is_inside(x, regions[i-1]) for x in samples_i]
         push!(vol_ratio, 1 / mean(inside_i))
     end

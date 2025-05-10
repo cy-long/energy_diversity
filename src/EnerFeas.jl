@@ -137,50 +137,47 @@ function volume_EFD(p::EnergyConstrProb, exact::Bool=false, N::Int=10, eN::Int=1
     return vol_in_s
 end
 
-
-
-
-
-
-# p0: domain of the last (biggest) region, S_range: increasing range of total supply values
-function volume_range_EFD(p0::EnergyConstrProb, S_range::Vector{Float64}, α::Float64=0.5)
-    if p0.type == :indiv 
-        volumes = Float64[]
-        for S in S_range
-            p0.S = S
-            vol_j = volume_EFD(p0, true);
-            push!(volumes, vol_j)
+# p: a seed problem specifying the unchanged constraints; P_range: range of total supply that changes
+# n_thread: inside each hr_sample, # thread of each sampling [future: change to parallel]
+# n_sample: inside each hr_sample, # samples for inside each thread
+# α: [experimental] balance parameter from cascade and ball vol estimation
+function volume_range_EFD(p::EnergyConstrProb, P_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10, α::Float64=1.0)
+    if p.type == :indiv 
+        volumes = [0.0 for _ in P_range]
+        @showprogress desc="Volume: $(P_range[1]) to $(P_range[end])" for (i,S) in pairs(P_range)
+            p.S = S
+            volumes[i] = volume_EFD(p, true)
         end
-    
-    elseif p0.type == :total
-        volumes = [0.0 for _ in S_range]
-        S_range[1] > S_range[end] || reverse!(S_range)
+
+    elseif p.type == :total
+        volumes = [0.0 for _ in P_range]
+        P_range[1] > P_range[end] || reverse!(P_range)
         
-        itp = translate_EFD(p0) #will be adjusted for each different p(S)
-        quadbounds = [Sphere(itp.yc, sqrt(S + itp.t-p0.S))
-            for S in S_range] 
-        regions = [InterPolySpheres(itp.A, vcat(itp.b[1:end-1], itp.b[end]+S-p0.S), [q], :total)
-            for (S, q) in zip(S_range, quadbounds)]
+        itp = translate_EFD(p)
+        quadbounds = [Sphere(itp.yc, sqrt(S + itp.t-p.S))
+            for S in P_range] 
+        regions = [InterPolySpheres(itp.A, vcat(itp.b[1:end-1], itp.b[end]+S-p.S), [q], :total)
+            for (S, q) in zip(P_range, quadbounds)]
         balls = [chevball(r) for r in regions]
 
-        volumes[1] = volume_domain(regions[1], 10, 1, true) #>HARD CODED
+        volumes[1] = volume_domain(regions[1], n_layer, 1, true)
         if volumes[1] == 0.0
             return volumes
         end
 
         r = 1.0;
-        @showprogress desc="Volume: $(S_range[end]) to $(S_range[1])" for i in eachindex(regions)
+        @showprogress desc="Volume: $(P_range[end]) to $(P_range[1])" for i in eachindex(regions)
             if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
                 break
             end
-            samples_i = hr_sample(regions[i], 10, 10000, balls[i]) #>HARD CODED
+            samples_i = hr_sample(regions[i], n_thread, n_sample, balls[i])
             inside_R_ii = [is_inside(s, regions[i+1]) for s in samples_i]
             r = mean(inside_R_ii)
             b = mean([is_inside_sphere(s, balls[i+1]) for s in samples_i])
             volumes[i+1] = α * (volumes[i] * r) + (1 - α) * (vol_sphere(balls[i+1]) * r / b)
         end
 
-        reverse!(S_range); reverse!(volumes)
+        reverse!(P_range); reverse!(volumes)
 
         volumes[isnan.(volumes)] .= 0.0
         volumes = volumes * det(itp.invL) # back in s-space
@@ -198,16 +195,19 @@ total_supply(s::Vector{Float64}, p::EnergyConstrProb) = transpose(s) * p.Λ * (s
 include("core.jl")
 include("generate.jl")
 include("visualize.jl")
+include("analyze.jl")
 
 export EnergyConstrProb, EcosysConfig
 export check_feasible_EFD, sample_EFD, volume_EFD, volume_range_EFD
 export baseline_supply
-export ecosys_config, generate_sigma_arrays, generate_problem
+export ecosys_config, generate_sigma_arrays, generate_problem, generate_sigma, generate_trophic
+export extract_critical, extract_peak, score_saturation, score_unimodal
 
 # ---- these exports for temporary development only ----
 export show_linear, show_quadratic
 export IsotropicTransParams, create_poly, translate_EFD
 export Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, grow_quadratic
+export smooth, smooth_curve
 # ---- ----
 
 end
