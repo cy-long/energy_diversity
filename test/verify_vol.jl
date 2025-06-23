@@ -1,4 +1,5 @@
-"""Test for the error rate of the volume calculation, using standard examples with analytical solutions"""
+"""Verify the volume calculation, test for best hyperparameters (such as n_sample), with changing K"""
+# To be included in the Supplementary Information of the draft
 
 include("../src/EnerFeas.jl");
 using .EnerFeas
@@ -11,26 +12,26 @@ function vol_spherical_simplex(S::Float64, K::Int)
     return (pi^(K/2) * S^(K/2)) / ((gamma(K/2 + 1) * 2^K))
 end
 
-K = 8; P_range = Vector(1.0:1.0:100.0);
-vol_stan = [vol_spherical_simplex(S, K) for S in P_range]; # standard volumes
+K = 8; Q_range = Vector(1.0:1.0:100.0);
+vol_stan = [vol_spherical_simplex(S, K) for S in Q_range]; # standard volumes
 ra_stan = vol_stan[1:end-1]./vol_stan[2:end]; # standard ratios
 
-function compute_volume(P_range, n_thread::Int, n_samples::Int, n_layers::Int)
-    P_range[1] > P_range[end] || reverse!(P_range);
+function compute_volume(Q_range, n_thread::Int, n_samples::Int, n_layers::Int)
+    Q_range[1] > Q_range[end] || reverse!(Q_range);
     
     A = -Matrix{Float64}(vcat(I(K),I(K),zeros(K)')); 
-    quadbounds = [Sphere(zeros(K), sqrt(S)) for S in P_range];
-    regions = [InterPolySpheres(A, vcat(zeros(2K),S), [q], :total) for (S, q) in zip(P_range, quadbounds)];
+    quadbounds = [Sphere(zeros(K), sqrt(S)) for S in Q_range];
+    regions = [InterPolySpheres(A, vcat(zeros(2K),S), [q], :total) for (S, q) in zip(Q_range, quadbounds)];
     balls = [chevball(r) for r in regions];
 
     v1 = volume_domain(regions[1], n_layers, 1, true);
 
-    volumes = [0.0 for _ in P_range];
+    volumes = [0.0 for _ in Q_range];
     volumes[1] = v1;
-    P_range[1] > P_range[end] || reverse!(P_range)
+    Q_range[1] > Q_range[end] || reverse!(Q_range)
     r = 1.0
     ratios = [];
-    @showprogress desc="Volume: $(P_range[end]) to $(P_range[1])" for i in eachindex(regions)
+    @showprogress desc="Volume: $(Q_range[end]) to $(Q_range[1])" for i in eachindex(regions)
         if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
             break
         end
@@ -41,7 +42,7 @@ function compute_volume(P_range, n_thread::Int, n_samples::Int, n_layers::Int)
         push!(ratios, r)
     end
     reverse!(volumes); reverse!(ratios)
-    P_range[end] > P_range[1] || reverse!(P_range)
+    Q_range[end] > Q_range[1] || reverse!(Q_range)
     return volumes, ratios
 end
 
@@ -55,7 +56,7 @@ for (a,b) in zip(aa,bb)
     @info "a = $a, b = $b"
     err_r = Float64[]; err_v = Float64[];
     for _ in 1:3
-        volumes, ratios = compute_volume(a, b, v1, regions, balls, P_range);
+        volumes, ratios = compute_volume(a, b, v1, regions, balls, Q_range);
         push!(err_r, norm(ra_stan - ratios)/norm(ra_stan));
         push!(err_v, norm(vol_stan - volumes)/norm(vol_stan));
     end

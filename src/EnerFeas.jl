@@ -137,27 +137,27 @@ function volume_EFD(p::EnergyConstrProb, exact::Bool=false, N::Int=10, eN::Int=1
     return vol_in_s
 end
 
-# p: a seed problem specifying the unchanged constraints; P_range: range of total supply that changes
-# n_thread: inside each hr_sample, # thread of each sampling [future: change to parallel]
-# n_sample: inside each hr_sample, # samples for inside each thread
-# α: [experimental] balance parameter from cascade and ball vol estimation
-function volume_range_EFD(p::EnergyConstrProb, P_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10, α::Float64=1.0)
+# p: a seed problem specifying the unchanged constraints; Q_range: range of total supply that changes
+# n_thread: number thread of each sampling [future: make it parallel]
+# n_sample: number of sample per thread
+# n_layer: number of estimation phases per volume calculation
+function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10)
     if p.type == :indiv 
-        volumes = [0.0 for _ in P_range]
-        @showprogress desc="Volume: $(P_range[1]) to $(P_range[end])" for (i,S) in pairs(P_range)
+        volumes = [0.0 for _ in Q_range]
+        @showprogress desc="Volume: $(Q_range[1]) to $(Q_range[end])" for (i,S) in pairs(Q_range)
             p.S = S
             volumes[i] = volume_EFD(p, true)
         end
 
     elseif p.type == :total
-        volumes = [0.0 for _ in P_range]
-        P_range[1] > P_range[end] || reverse!(P_range)
+        volumes = [0.0 for _ in Q_range]
+        Q_range[1] > Q_range[end] || reverse!(Q_range)
         
         itp = translate_EFD(p)
         quadbounds = [Sphere(itp.yc, sqrt(S + itp.t-p.S))
-            for S in P_range] 
+            for S in Q_range] 
         regions = [InterPolySpheres(itp.A, vcat(itp.b[1:end-1], itp.b[end]+S-p.S), [q], :total)
-            for (S, q) in zip(P_range, quadbounds)]
+            for (S, q) in zip(Q_range, quadbounds)]
         balls = [chevball(r) for r in regions]
 
         volumes[1] = volume_domain(regions[1], n_layer, 1, true)
@@ -166,7 +166,7 @@ function volume_range_EFD(p::EnergyConstrProb, P_range::Vector{Float64}; n_threa
         end
 
         r = 1.0;
-        @showprogress desc="Volume: $(P_range[end]) to $(P_range[1])" for i in eachindex(regions)
+        @showprogress desc="Volume: $(Q_range[end]) to $(Q_range[1])" for i in eachindex(regions)
             if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
                 break
             end
@@ -174,23 +174,16 @@ function volume_range_EFD(p::EnergyConstrProb, P_range::Vector{Float64}; n_threa
             inside_R_ii = [is_inside(s, regions[i+1]) for s in samples_i]
             r = mean(inside_R_ii)
             b = mean([is_inside_sphere(s, balls[i+1]) for s in samples_i])
-            volumes[i+1] = α * (volumes[i] * r) + (1 - α) * (vol_sphere(balls[i+1]) * r / b)
+            volumes[i+1] = volumes[i] * r
         end
 
-        reverse!(P_range); reverse!(volumes)
+        reverse!(Q_range); reverse!(volumes)
 
         volumes[isnan.(volumes)] .= 0.0
         volumes = volumes * det(itp.invL) # back in s-space
     end
-
     return volumes
 end
-
-# Calculate the baseline supply needed to sustain the ecosystem with least biomass
-baseline_supply(p::EnergyConstrProb) = dot(p.d + p.σ * (p.k .* p.N⁰), p.N⁰)
-
-# Calculate the total supply at state s (weighed by N)
-total_supply(s::Vector{Float64}, p::EnergyConstrProb) = transpose(s) * p.Λ * (s - p.d)
 
 include("core.jl")
 include("generate.jl")
@@ -199,15 +192,17 @@ include("analyze.jl")
 
 export EnergyConstrProb, EcosysConfig
 export check_feasible_EFD, sample_EFD, volume_EFD, volume_range_EFD
-export baseline_supply
-export ecosys_config, generate_sigma_arrays, generate_problem, generate_sigma, generate_trophic
+export baseline_supply, total_supply
+export ecosys_config, generate_sigma_arrays, generate_problem, generate_sigma
 export extract_critical, extract_peak, score_saturation, score_unimodal
+export generate_trophic_chain, generate_trophic, perturb_trophic
 
 # ---- these exports for temporary development only ----
 export show_linear, show_quadratic
 export IsotropicTransParams, create_poly, translate_EFD
 export Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, grow_quadratic
 export smooth, smooth_curve
+export make_dissipative!
 # ---- ----
 
 end

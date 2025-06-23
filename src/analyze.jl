@@ -54,3 +54,9 @@ function score_unimodal(x::Vector{Float64}, y::Vector{Float64})
     score_1 = dot(abs.(dy), ind)/sum(abs.(dy))
     return score_1
 end
+
+# Calculate the baseline supply needed to sustain the ecosystem with least biomass
+baseline_supply(p::EnergyConstrProb) = dot(p.d + p.σ * (p.k .* p.N⁰), p.N⁰)
+
+# Calculate the total supply at state s (weighed by N)
+total_supply(s::Vector{Float64}, p::EnergyConstrProb) = transpose(s) * p.Λ * (s - p.d)
