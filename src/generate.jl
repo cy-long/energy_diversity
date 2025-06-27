@@ -16,7 +16,7 @@ struct EcosysConfig
     seed::Union{Nothing, Int}
 end
 
-function ecosys_config(;K::Int, S_type::Symbol, n_scale::Float64=1.0, n_var::Float64=1.0, conne::Float64=1.0, energetive::Bool=false, dissipative::Bool=true, k_param=:identical, d_param=:identical, N0_param=:identical, ϵ=0.5, γ=-0.25, seed=nothing)
+function ecosys_config(;K::Int, S_type::Symbol, n_scale::Float64=1.0, n_var::Float64=1.0, conne::Float64=1.0, energetive::Bool=false, dissipative::Bool=true, k_param=:identical, d_param=:identical, N0_param=:identical, ϵ=0.25, γ=-0.25, seed=nothing)
     (0.0 < conne <= 1.0) || error("connectance must be between 0 and 1")
     S_type in [:indiv, :total] || error("S_type must be :indiv or :total")
     k_param in [:unit, :identical, :normal] || k_param isa Float64 || error("Invalid k_param")
@@ -110,7 +110,7 @@ end
 
 function generate_sigma_arrays(ec::EcosysConfig, n_samples::Int=100)
     isnothing(ec.seed) || Random.seed!(ec.seed)
-    σs = [generate_sigma(ec.K, ec.energetive, ec.dissipative, ec.n_scale, ec.n_var, ec.conne) for _ in 1:n_samples]
+    σs = [generate_sigma(ec.K, ec.energetive, ec.dissipative, ec.n_scale, ec.n_var, ec.conne, ec.ϵ) for _ in 1:n_samples]
     if n_samples == 1
         σs = σs[1]
     end

@@ -27,7 +27,7 @@ using Plots, ProgressMeter, IterTools
 #     push!(devols_all_1, devols)
 # end
 
-## ---- persistence ----
+## ---- persistence ---- 
 ec = ecosys_config(K=4, S_type=:total, conne=1.0, k_param=0.1, d_param=:lognormal, seed=123);
 σs = generate_sigma_arrays(ec, 20);
 Q_range = Vector(1e-4:0.35:15.0);
