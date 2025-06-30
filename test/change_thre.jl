@@ -1,32 +1,26 @@
-"""Changing the average level of N⁰"""
-
 include("../src/EnerFeas.jl");
 using .EnerFeas
 using Random, Distributions, LinearAlgebra
 using Plots, ProgressMeter, IterTools
 using LaTeXStrings
 
-labels = ["N⁰=1", "N⁰=√5", "N⁰=5"]; colors = [:green, :blue, :red]; N0s = [1.0, sqrt(5), 5.0];
+labels = ["ϵ=0","ϵ=10⁻³","ϵ=10⁻¹"]; colors = [:green, :blue, :red]; thres = [0.0, 0.001, 0.1];
 
 # ----- Total Energy Bound -----
-
-ecs_total = [ecosys_config(K=4, S_type=:total, N0_param = N0, k_param=0.0, seed=42) for N0 in [1.0, sqrt(5), 5.0]];
-
-Q_range_1 = vcat(1.0:0.2:50.8, 52.0:3.8:1000.0);
-Q_range_2 = vcat(1.0:0.75:200.0, 200.0:3.42:1000.0);
-Q_range_3 = vcat(1.0:1.0:100.0, 102.25:2.25:1000.0);
-Q_ranges_t = [Q_range_1, Q_range_2, Q_range_3];
+ecs_total = [ecosys_config(K=4, S_type=:total, k_param=k, seed=42) for k in thres];
+Q_range_t = vcat(1e-4:0.1:10, 10.25:0.3:100.0);
 
 vols_total = Vector{Vector{Vector{Float64}}}(undef, 3); 
 Random.seed!(345);
 
 for (i, ec) in enumerate(ecs_total)
+    if i > 2 continue end  # skip the first one, which is the baseline
     σs = generate_sigma_arrays(ec, 5);
     vols = Vector{Vector{Float64}}(undef, 5)
     @info "compute the $(i) config"
     for (j, σ) in enumerate(σs)
         p = generate_problem(ec, σ)
-        vols[j] = volume_range_EFD(p, Q_ranges_t[i], n_sample=2*10^4)  # this is a Vector
+        vols[j] = volume_range_EFD(p, Q_range_t, n_sample=2*10^4)
     end
     vols_total[i] = vols
 end
@@ -36,35 +30,36 @@ plt_t = plot(
     xlabel="Upper Energy Bound " * L"(Q)",
     ylabel="Prob. Feasibility " * L"(\mathbb{P}^F)",
     xaxis = :log10,
-    xlim = (1.0,1000.0),
-    ylim = (0.0, 0.45),
+    xlim = (1.0,100.0),
+    ylim = (0.0, 0.2),
     guidefont=font(6),
     tickfont=font(5),
     legendfont=font(5),
     size=(225,180),
-    legend=(0.15,0.93),
+    legend=(0.82,0.93),
     foreground_color_legend = nothing,
     background_color = :transparent
-    );
+);
 
-for (vols, la, co, N0, Q_range) in zip(vols_total, labels, colors, N0s, Q_ranges_t)
-    devols = [(Q/N0)^4/factorial(4) for Q in Q_range];
+lines = [:solid, :dot, :dot]; widths = [1.5, 1.0, 1.0];
+for (vols, la, co, li, wi) in zip(vols_total, labels, colors, lines, widths)
+    devols = [Q^4/factorial(4) for Q in Q_range_t];
     for (i, v) in enumerate(vols)
         plot!(
-            plt_t, Q_range, v ./ devols;
-            color=co, linewidth=1.0,
+            plt_t, Q_range_t, v ./ devols;
+            color=co, linewidth=wi, linestyle=li,
             label=(i == 1 ? la : "")
         )
     end
 end
 
 display(plt_t)
-savefig(plt_t, "figures/N0_total.pdf")
+savefig(plt_t, "figures/thre_total.pdf");
+
 
 # ----- Individual Energy Bound -----
-
-ecs_indiv = [ecosys_config(K=4, S_type=:indiv, N0_param = N0, k_param=0.0, seed=42) for N0 in [1.0, sqrt(5), 5.0]];
-Q_ranges_i = [vcat(1.0:0.5:1000.0) for _ in 1:3];
+ecs_indiv = [ecosys_config(K=4, S_type=:indiv, k_param=k, seed=42) for k in thres];
+Q_range_i = vcat(1e-4:0.1:100.0, 100.0:1.0:1000.0);
 vols_indiv = Vector{Vector{Vector{Float64}}}(undef, 3);
 Random.seed!(345);
 
@@ -74,7 +69,7 @@ for (i, ec) in enumerate(ecs_indiv)
     @info "compute the $(i) config"
     for (j, σ) in enumerate(σs)
         p = generate_problem(ec, σ)
-        vols[j] = volume_range_EFD(p, Q_ranges_i[i], n_sample=2*10^4)  # this is a Vector
+        vols[j] = volume_range_EFD(p, Q_range_i, n_sample=2*10^4)
     end
     vols_indiv[i] = vols
 end
@@ -92,19 +87,20 @@ plt_i = plot(
     size=(225,180),
     legend=(0.15,0.93),
     foreground_color_legend = nothing,
-    background_color = :transparent,
-    );
+    background_color = :transparent
+);
 
-for (vols, label, color, N0, Q_range) in zip(vols_indiv, labels, colors, N0s, Q_ranges_i)
-    devols = [(Q/N0)^4/factorial(4) for Q in Q_range];
+lines = [:solid, :dot, :dot]; widths = [1.5, 1.0, 1.0];
+for (vols, la, co, li, wi) in zip(vols_indiv, labels, colors, lines, widths)
+    devols = [Q^4/factorial(4) for Q in Q_range_i];
     for (i, v) in enumerate(vols)
         plot!(
-            plt_i, Q_range, v ./ devols;
-            color=color, linewidth=1.0,
-            label=(i == 1 ? label : "")
+            plt_i, Q_range_i, v ./ devols;
+            color=co, linewidth=wi, linestyle=li,
+            label=(i == 1 ? la : "")
         )
     end
 end
 
 display(plt_i)
-savefig(plt_i, "figures/N0_indiv.pdf")
+savefig(plt_i, "figures/thre_indiv.pdf");

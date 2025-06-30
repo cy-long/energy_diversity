@@ -6,7 +6,7 @@ using Random, Distributions, LinearAlgebra
 using Plots, ProgressMeter, IterTools
 using LaTeXStrings
 
-ecs_total = [ecosys_config(K=4,S_type=:total,k_param=0.1,d_param=s,n_scale=s,seed=42) for s in [1.0, 10.0, 100.0]];
+ecs_total = [ecosys_config(K=4,S_type=:total,k_param=0.0,d_param=s,n_scale=s,seed=42) for s in [1.0, 10.0, 100.0]];
 
 Q_range_l = vcat(1.0:0.2:10.0, 10.0:1.0:100.0, 100.0:5.0:2000.0);
 Q_range_h = vcat(1.0, 100.0:10.0:2000.0, 2000.0:50.0:10000.0);
@@ -32,12 +32,12 @@ plt_t = plot(
     ylabel="Prob. Feasibility " * L"(\mathbb{P}^F)",
     xaxis = :log10,
     xlim = (1.0,10000.0),
-    ylim = (0.0,0.16),
+    ylim = (0.0,0.2),
     guidefont=font(6),
     tickfont=font(5),
     legendfont=font(5),
     size=(225,180),
-    legend=(0.83,0.93),
+    legend=(0.85,0.93),
     foreground_color_legend = nothing,
     legend_border = false,
     background_color = :transparent,
@@ -45,6 +45,7 @@ plt_t = plot(
     );
 
 labels = ["k=10⁰","k=10¹","k=10²"]; colors = [:green, :blue, :red];
+
 for (vols, label, color, Q_range) in zip(vols_total, labels, colors, Q_ranges_t)
     devols = [Q^4/factorial(4) for Q in Q_range];
     for (i, v) in enumerate(vols)
@@ -61,7 +62,7 @@ savefig(plt_t, "figures/scaling_total.pdf");
 
 
 # ----- Individual Energy Bound -----
-ecs_indiv = [ecosys_config(K=4,S_type=:indiv,k_param=0.1,d_param=s,n_scale=s,seed=42) for s in [1.0, 10.0, 100.0]];
+ecs_indiv = [ecosys_config(K=4,S_type=:indiv,k_param=0.0,d_param=s,n_scale=s,seed=42) for s in [1.0, 10.0, 100.0]];
 Q_ranges_i = [vcat(1.0:1.0:10000.0) for _ in 1:3];
 vols_indiv = Vector{Vector{Vector{Float64}}}(undef, 3);
 Random.seed!(345);

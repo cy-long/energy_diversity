@@ -6,7 +6,7 @@ using LaTeXStrings
 
 labels = ["σ₀=0.1", "σ₀=0.25", "σ₀=0.75", "σ₀=1.0"]; colors = [:green, :blue, :red, :darkorange];
 
-ecs_total = [ecosys_config(K=4, S_type=:total, k_param=0.1, seed=42, ϵ=a) for a in [0.1, 0.25, 0.75, 1.0]];
+ecs_total = [ecosys_config(K=4, S_type=:total, k_param=0.0, seed=42, ϵ=a) for a in [0.1, 0.25, 0.75, 1.0]];
 vols_total = Vector{Vector{Float64}}(undef, 4); 
 
 Random.seed!(345);
@@ -26,7 +26,7 @@ plt_t = plot(
     ylabel="Prob. Feasibility " * L"(\mathbb{P}^F)",
     xaxis = :log10,
     xlim = (1.0,100.0),
-    # ylim = (0.0, 0.3),
+    ylim = (0.0, 0.25),
     guidefont=font(6),
     tickfont=font(5),
     legendfont=font(5),
@@ -37,13 +37,14 @@ plt_t = plot(
 );
 
 for (v, la, co) in zip(vols_total, labels, colors)
-    plot!(plt_t, Q_range_t, v ./ devols_t; color=co, linewidth=1.5, label=la)
+    plot!(plt_t, Q_range_t, v ./ devols_t; color=co, linewidth=1.0, label=la)
 end
 display(plt_t)
 savefig(plt_t, "figures/sigma0_total.pdf");
 
+# ----- Individual Energy Bound -----
 
-ecs_indiv = [ecosys_config(K=4, S_type=:indiv, k_param=0.1, seed=42, ϵ=a) for a in [0.1, 0.25, 0.75, 1.0]];
+ecs_indiv = [ecosys_config(K=4, S_type=:indiv, k_param=0.0, seed=42, ϵ=a) for a in [0.1, 0.25, 0.75, 1.0]];
 vols_indiv = Vector{Vector{Float64}}(undef, 4); 
 
 Random.seed!(345);
@@ -55,9 +56,7 @@ for (i, ec) in enumerate(ecs_indiv)
     vols_indiv[i] = volume_range_EFD(p, Q_range_i)
 end
 
-
 devols_i = [Q^4/factorial(4) for Q in Q_range_i];
-
 
 plt_i = plot(
     framestyle=:box, grid=false,
@@ -76,13 +75,13 @@ plt_i = plot(
 );
 
 for (v, la, co) in zip(vols_indiv, labels, colors)
-    plot!(plt_i, Q_range_i, v ./ devols_i; color=co, linewidth=1.5, label=la)
+    plot!(plt_i, Q_range_i, v ./ devols_i; color=co, linewidth=1.0, label=la)
 end
 display(plt_i)
 savefig(plt_i, "figures/sigma0_indiv.pdf");
 
 using JLD2
-@save "data/change_eps.jld2" ecs_total ecs_indiv Q_range_t Q_range_i vols_total vols_indiv
+@save "data/sensitivity/sigma0.jld" ecs_total ecs_indiv Q_range_t Q_range_i vols_total vols_indiv
 
 # Let's then understand the relationship between ϵ and self-regulation
 # using LinearAlgebra
