@@ -86,7 +86,7 @@ function hr_step(x::Vector{Float64}, region::InterPolySpheres)
     end
 end
 
-# regions will be intersecting domain with k*chevball(domain), whose chevball is the same as for the domain
+# regions will be intersecting domain with ϵ*chevball(domain), whose chevball is the same as for the domain
 # therefore, no need to recompute chevball for each region, as it could be costy in time
 function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, 
     start::Union{Sphere,Vector{Vector{Float64}}}=chevball(region))

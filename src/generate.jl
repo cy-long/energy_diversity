@@ -8,22 +8,32 @@ struct EcosysConfig
     conne::Float64
     energetive::Bool
     dissipative::Bool
-    k_param::Union{Float64, Symbol}
+    positive::Bool
+    ϵ_param::Union{Float64, Symbol}
     d_param::Union{Float64, Symbol}
     N0_param::Union{Float64, Symbol}
-    ϵ::Float64
+    σ0::Float64
     γ::Float64
     seed::Union{Nothing, Int}
 end
 
-function ecosys_config(;K::Int, S_type::Symbol, n_scale::Float64=1.0, n_var::Float64=1.0, conne::Float64=1.0, energetive::Bool=false, dissipative::Bool=true, k_param=:identical, d_param=:identical, N0_param=:identical, ϵ=0.25, γ=-0.25, seed=nothing)
+# Reconstruct this function accroding to new texts
+function ecosys_config(;
+    K::Int, S_type::Symbol, n_scale::Float64=1.0, n_var::Float64=1.0, conne::Float64=1.0, 
+    energetive::Bool=false, dissipative::Bool=true, positive::Bool=false,
+    d_param=:identical, d_scale=1.0,
+    N0_param=:identical, N0_scale=1.0,
+    ϵ_param=0.0, ϵ_scale=0.0,
+    σ0=0.25, γ=-0.25, seed=nothing
+)
+
     (0.0 < conne <= 1.0) || error("connectance must be between 0 and 1")
     S_type in [:indiv, :total] || error("S_type must be :indiv or :total")
-    k_param in [:unit, :identical, :normal] || k_param isa Float64 || error("Invalid k_param")
+    ϵ_param in [:unit, :identical, :normal] || ϵ_param isa Float64 || error("Invalid ϵ_param")
     d_param in [:identical, :lognormal, :allometric] || d_param isa Float64 || error("Invalid d_param")
     N0_param in [:identical, :lognormal] || N0_param isa Float64 || error("Invalid N0_param")
 
-    return EcosysConfig(K, S_type, n_scale, n_var, conne, energetive, dissipative, k_param, d_param, N0_param, ϵ, γ, seed)
+    return EcosysConfig(K, S_type, n_scale, n_var, conne, energetive, dissipative, positive, ϵ_param, d_param, N0_param, σ0, γ, seed)
 end
 
 function make_energetive!(σ::Matrix{Float64})  # modifies σ in-place
@@ -42,9 +52,9 @@ function make_energetive!(σ::Matrix{Float64})  # modifies σ in-place
     return nothing
 end
 
-function make_dissipative!(σ::Matrix{Float64}, ϵ::Float64=0.25)
+function make_dissipative!(σ::Matrix{Float64}, σ0::Float64=0.25)
     c = minimum(eigvals((σ + σ') / 2), init=0.0)
-    shift = -c + ϵ
+    shift = -c + σ0
     for i in 1:size(σ, 1)
         σ[i, i] += shift
     end
@@ -61,16 +71,19 @@ function impose_connectance!(σ::Matrix{Float64}, c::Float64=1.0)
     return nothing
 end
 
-function generate_sigma(K::Int, energetive::Bool, dissipative::Bool, n_scale::Float64=1.0, n_var::Float64=1.0, c::Float64=1.0, ϵ::Float64=0.25)
+function generate_sigma(K::Int, energetive::Bool, dissipative::Bool, positive::Bool, n_scale::Float64=1.0, n_var::Float64=1.0, c::Float64=1.0, σ0::Float64=0.25)
     σ = rand(Normal(0, n_var),K,K)
     if c < 1.0
         impose_connectance!(σ, c)
+    end
+    if positive
+        σ = abs.(σ)
     end
     if energetive
         make_energetive!(σ)
     end
     if dissipative 
-        make_dissipative!(σ, ϵ)
+        make_dissipative!(σ, σ0)
     end
     return n_scale * σ
 end
@@ -88,12 +101,12 @@ function generate_d(K::Int, d_param::Union{Float64, Symbol}, m::Vector{Float64},
     end
 end
 
-function generate_k(K::Int, k_param::Union{Float64, Symbol})
-    if k_param isa Float64
-        return fill(k_param, K)
-    elseif k_param == :lognormal
+function generate_eps(K::Int, ϵ_param::Union{Float64, Symbol})
+    if ϵ_param isa Float64
+        return fill(ϵ_param, K)
+    elseif ϵ_param == :lognormal
         return exp.(randn(K))
-    elseif k_param == :unit
+    elseif ϵ_param == :unit
         return fill(1.0, K)
     end
 end
@@ -110,7 +123,7 @@ end
 
 function generate_sigma_arrays(ec::EcosysConfig, n_samples::Int=100)
     isnothing(ec.seed) || Random.seed!(ec.seed)
-    σs = [generate_sigma(ec.K, ec.energetive, ec.dissipative, ec.n_scale, ec.n_var, ec.conne, ec.ϵ) for _ in 1:n_samples]
+    σs = [generate_sigma(ec.K, ec.energetive, ec.dissipative, ec.positive, ec.n_scale, ec.n_var, ec.conne, ec.σ0) for _ in 1:n_samples]
     if n_samples == 1
         σs = σs[1]
     end
@@ -118,12 +131,12 @@ function generate_sigma_arrays(ec::EcosysConfig, n_samples::Int=100)
 end
 
 function generate_problem(ec::EcosysConfig, σ::Matrix{Float64})
-    k = generate_k(ec.K, ec.k_param)
+    ϵ = generate_eps(ec.K, ec.ϵ_param)
     N⁰ = generate_N0(ec.K, ec.N0_param, fill(0.0, ec.K), ec.γ)
     d = generate_d(ec.K, ec.d_param, N⁰, ec.γ)
     Λ = inv(σ); Q = (Λ + Λ')/2; c = -Λ * d
     S = 0.0
-    return EnergyConstrProb(σ,Λ,Q,c,k,d,N⁰,ec.K,S,ec.S_type)
+    return EnergyConstrProb(σ,Λ,Q,c,ϵ,d,N⁰,ec.K,S,ec.S_type)
 end
 
 

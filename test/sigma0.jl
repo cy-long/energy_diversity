@@ -6,7 +6,7 @@ using LaTeXStrings
 
 labels = ["σ₀=0.1", "σ₀=0.25", "σ₀=0.75", "σ₀=1.0"]; colors = [:green, :blue, :red, :darkorange];
 
-ecs_total = [ecosys_config(K=4, S_type=:total, k_param=0.0, seed=42, ϵ=a) for a in [0.1, 0.25, 0.75, 1.0]];
+ecs_total = [ecosys_config(K=4, S_type=:total, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.75, 1.0]];
 vols_total = Vector{Vector{Float64}}(undef, 4); 
 
 Random.seed!(345);
@@ -25,7 +25,7 @@ plt_t = plot(
     xlabel="Upper Energy Bound " * L"(Q)",
     ylabel="Prob. Feasibility " * L"(\mathbb{P}^F)",
     xaxis = :log10,
-    xlim = (1.0,100.0),
+    xlim = (1.0, 100.0),
     ylim = (0.0, 0.25),
     guidefont=font(6),
     tickfont=font(5),
@@ -44,7 +44,7 @@ savefig(plt_t, "figures/sigma0_total.pdf");
 
 # ----- Individual Energy Bound -----
 
-ecs_indiv = [ecosys_config(K=4, S_type=:indiv, k_param=0.0, seed=42, ϵ=a) for a in [0.1, 0.25, 0.75, 1.0]];
+ecs_indiv = [ecosys_config(K=4, S_type=:indiv, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.75, 1.0]];
 vols_indiv = Vector{Vector{Float64}}(undef, 4); 
 
 Random.seed!(345);
@@ -83,7 +83,7 @@ savefig(plt_i, "figures/sigma0_indiv.pdf");
 using JLD2
 @save "data/sensitivity/sigma0.jld" ecs_total ecs_indiv Q_range_t Q_range_i vols_total vols_indiv
 
-# Let's then understand the relationship between ϵ and self-regulation
+# Let's then understand the relationship between σ0 and self-regulation
 # using LinearAlgebra
 # using Plots
 
@@ -97,13 +97,13 @@ histogram(cs, bins=100, xlabel="Minimum Eigenvalue", ylabel="Frequency", normali
 
 
 # plt = plot(aspect_ratio = :equal)
-# ϵs = [0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.25];
+# σ0s = [0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.25];
 
-# for ϵ in ϵs
+# for σ0 in σ0s
 #     Random.seed!(10);
 #     σ = rand(Normal(0,3.0), 2, 2);
 #     # c = minimum(eigvals((σ + σ') / 2), init=0.0)
-#     σ[diagind(σ)] .+= ϵ;
+#     σ[diagind(σ)] .+= σ0;
 
 #     Λ = inv(σ);
 #     P = (Λ + Λ') / 2
@@ -113,7 +113,7 @@ histogram(cs, bins=100, xlabel="Minimum Eigenvalue", ylabel="Frequency", normali
 #     pts = [[cos.(θ),sin.(θ)] for θ in 0:0.05:2π];
 #     pts = [inv(L) * pt for pt in pts];
 
-#     plot!(plt, [p[1] for p in pts], [p[2] for p in pts], alpha=0.35, linewidth=3, label=@sprintf("ϵ=%.2f", ϵ))
+#     plot!(plt, [p[1] for p in pts], [p[2] for p in pts], alpha=0.35, linewidth=3, label=@sprintf("σ0=%.2f", σ0))
 # end
 
 # display(plt)

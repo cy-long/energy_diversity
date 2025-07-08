@@ -4,7 +4,7 @@ include("../src/EnerFeas.jl")
 using .EnerFeas, JLD2, Distributions, Random, Plots, StatsPlots, DataFrames
 
 ##1 demonstrate the unimodal score
-ec = ecosys_config(K=4, S_type=:total, conne=1.0, k_param=0.2, d_param=0.1, N0_param=1.0, seed=100);
+ec = ecosys_config(K=4, S_type=:total, conne=1.0, ϵ_param=0.2, d_param=0.1, N0_param=1.0, seed=100);
 σ = generate_sigma_arrays(ec, 50);
 Q_range = Vector(1e-4:0.1:20.0);
 
@@ -51,7 +51,7 @@ scatter(P_opt, p_per, label="K=4", xlabel="P_opt", ylabel="max Pr", legend=:topr
 
 ##3 correlation of characteristics in persistence and emergence
 # generate data for linear problems
-ec1 = ecosys_config(K=4, S_type=:indiv, conne=1.0, k_param=0.2, d_param=0.1, N0_param=1.0, seed=100);
+ec1 = ecosys_config(K=4, S_type=:indiv, conne=1.0, ϵ_param=0.2, d_param=0.1, N0_param=1.0, seed=100);
 # generate additional individual problems
 all_vols1 = []; all_devols1 = [];
 for i in eachindex(σ)

@@ -55,8 +55,33 @@ function score_unimodal(x::Vector{Float64}, y::Vector{Float64})
     return score_1
 end
 
+function critical_energy(p::EnergyConstrProb)
+    model = Model()
+    @variable(model, s[i = 1:p.K]>=0)
+    @variable(model, Qc >= 0)
+
+    A = -vcat(I, p.Λ, -p.N⁰')
+    b = -vcat(zeros(p.K), p.ϵ .* p.N⁰ - p.c, -Qc)
+    @constraint(model, A*s .<= b)
+
+    if p.type == :total
+        @constraint(model, s'*p.Q*s + p.c'*s <= Qc)
+    end
+
+    @objective(model, Min, Qc) # dummy objective
+    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV)); #> handling usage outside this package
+    set_optimizer_attribute(model, "OutputFlag", 0)
+    set_optimizer_attribute(model, "LogToConsole", 0)
+    optimize!(model)
+    if termination_status(model) != MOI.OPTIMAL
+        return false
+    else 
+        return objective_value(model), value.(s)
+    end
+end
+
 # Calculate the baseline supply needed to sustain the ecosystem with least biomass
-baseline_supply(p::EnergyConstrProb) = dot(p.d + p.σ * (p.k .* p.N⁰), p.N⁰)
+baseline_supply(p::EnergyConstrProb) = dot(p.d + p.σ * (p.ϵ .* p.N⁰), p.N⁰)
 
 # Calculate the total supply at state s (weighed by N)
 total_supply(s::Vector{Float64}, p::EnergyConstrProb) = transpose(s) * p.Λ * (s - p.d)

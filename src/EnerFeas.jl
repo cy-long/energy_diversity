@@ -16,9 +16,9 @@ mutable struct EnergyConstrProb{T}
     Λ::Matrix{T} # inverse interaction matrix, Λ = σ⁻¹
     Q::Matrix{T} # quadratic form, Q = (Λ + Λ')/2
     c::Vector{T} # demands offset, c = -Λ * d
-    k::Vector{T} # vector of coefficients for feasibility tolerance
+    ϵ::Vector{T} # coefficients of threshold in steady state biomass
     d::Vector{T} # vector of demand
-    N⁰::Vector{T} # vector of minimal biomass 
+    N⁰::Vector{T} # vector of minimal viable biomass 
     K::Int # number of species
     S::T # supply cap, could be individual or total
     type::Symbol # specify the type of constraint
@@ -43,10 +43,10 @@ function translate_EFD(p::EnergyConstrProb)
         yc = -0.5 * invL' * p.c
         t = p.S + 0.25 * p.c' * inv(p.Q) * p.c
         A = -vcat(I, p.Λ, -p.N⁰') * invL
-        b = -vcat(zeros(p.K), p.k .* p.N⁰ - p.c, -p.S)
+        b = -vcat(zeros(p.K), p.ϵ .* p.N⁰ - p.c, -p.S)
     elseif p.type == :indiv
         A = -vcat(I, p.Λ, -p.N⁰')
-        b = -vcat(zeros(p.K), p.k .* p.N⁰ - p.c, -p.S)
+        b = -vcat(zeros(p.K), p.ϵ .* p.N⁰ - p.c, -p.S)
     end
     return IsotropicTransParams(L, invL, yc, t, A, b)
 end
@@ -54,10 +54,10 @@ end
 function create_poly(p::EnergyConstrProb)
     if p.type == :indiv
         A = -vcat(I, p.Λ, -p.N⁰)
-        b = -vcat(zeros(p.K), p.k .* p.N⁰-p.c, -p.S)
+        b = -vcat(zeros(p.K), p.ϵ .* p.N⁰-p.c, -p.S)
     elseif p.type == :total # not a finite polyhedron
         A = -vcat(I, p.Λ)
-        b = -vcat(zeros(p.K), p.k .* p.N⁰-p.c)
+        b = -vcat(zeros(p.K), p.ϵ .* p.N⁰-p.c)
     end
     return polyhedron(hrep(A, b))
 end
@@ -67,7 +67,7 @@ function check_feasible_EFD(p::EnergyConstrProb)
     @variable(model, s[i = 1:p.K])
 
     A = -vcat(I, p.Λ, -p.N⁰')
-    b = -vcat(zeros(p.K), p.k .* p.N⁰ - p.c, -p.S)
+    b = -vcat(zeros(p.K), p.ϵ .* p.N⁰ - p.c, -p.S)
     @constraint(model, A*s .<= b)
 
     if p.type == :total
@@ -186,6 +186,8 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
     return volumes
 end
 
+
+
 include("core.jl")
 include("generate.jl")
 include("visualize.jl")
@@ -204,6 +206,7 @@ export IsotropicTransParams, create_poly, translate_EFD
 export Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, grow_quadratic
 export smooth, smooth_curve
 export make_dissipative!
+export critical_energy, baseline_supply
 # ---- ----
 
 end

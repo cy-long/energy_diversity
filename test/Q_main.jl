@@ -10,8 +10,8 @@ using Random, Distributions, LinearAlgebra
 using Plots, ProgressMeter, IterTools
 
 ## --- emergence ---
-# ec_1 = ecosys_config(K=8, S_type=:indiv, conne=1.0, k_param=0.2, d_param=:lognormal, seed=123);
-# ec_1 = ecosys_config(K=4, S_type=:indiv, conne=1.0, k_param=0.2, d_param=:allometric, N0_param=:lognormal, seed=123);
+# ec_1 = ecosys_config(K=8, S_type=:indiv, conne=1.0, ϵ_param=0.2, d_param=:lognormal, seed=123);
+# ec_1 = ecosys_config(K=4, S_type=:indiv, conne=1.0, ϵ_param=0.2, d_param=:allometric, N0_param=:lognormal, seed=123);
 
 # σs = generate_sigma_arrays(ec_1, 20);
 # Q_range = Vector(1e-4:0.1:15.0);
@@ -28,7 +28,7 @@ using Plots, ProgressMeter, IterTools
 # end
 
 ## ---- persistence ---- 
-ec = ecosys_config(K=4, S_type=:total, conne=1.0, k_param=0.1, d_param=:lognormal, seed=123);
+ec = ecosys_config(K=4, S_type=:total, conne=1.0, ϵ_param=0.1, d_param=:lognormal, seed=123);
 σs = generate_sigma_arrays(ec, 20);
 Q_range = Vector(1e-4:0.35:15.0);
 
