@@ -3,11 +3,9 @@ module EnerFeas
 using Random, Distributions
 using SpecialFunctions
 using LinearAlgebra
-using JuMP, Gurobi
+using JuMP, SCS
 using Polyhedra, QHull
 using Plots, ProgressMeter
-
-const GRB_ENV = Gurobi.Env(output_flag=0)
 
 # instead of "problem", these are just paramers. We need to reconfigurate this. 
 # Ideally allow people to perfom whatever constraints they like to do
@@ -75,9 +73,8 @@ function check_feasible_EFD(p::EnergyConstrProb)
     end
 
     @objective(model, Max, 0) # dummy objective
-    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV)); #> handling usage outside this package
-    set_optimizer_attribute(model, "OutputFlag", 0)
-    set_optimizer_attribute(model, "LogToConsole", 0)
+    set_optimizer(model, SCS.Optimizer);
+    set_optimizer_attribute(model, "verbose", 0)
     optimize!(model)
     if termination_status(model) != MOI.OPTIMAL
         return false
@@ -167,7 +164,10 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
         end
 
         r = 1.0;
-        @showprogress desc="Volume: $(Q_range[end]) to $(Q_range[1])" for i in eachindex(regions)
+        @showprogress desc = @sprintf(
+            "Volume: %.2f to %.2f",
+            Q_range[end], Q_range[1]
+        ) for i in eachindex(regions)
             if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
                 break
             end
@@ -206,7 +206,7 @@ export IsotropicTransParams, create_poly, translate_EFD
 export Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, grow_quadratic
 export smooth, smooth_curve
 export make_dissipative!
-export critical_energy, baseline_supply
+export critical_energy, baseline_supply, optimal_supply
 # ---- ----
 
 end

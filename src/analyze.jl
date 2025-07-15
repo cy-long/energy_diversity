@@ -68,16 +68,24 @@ function critical_energy(p::EnergyConstrProb)
         @constraint(model, s'*p.Q*s + p.c'*s <= Qc)
     end
 
-    @objective(model, Min, Qc) # dummy objective
-    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV)); #> handling usage outside this package
-    set_optimizer_attribute(model, "OutputFlag", 0)
-    set_optimizer_attribute(model, "LogToConsole", 0)
+    @objective(model, Min, Qc)
+    set_optimizer(model, SCS.Optimizer);
+    set_optimizer_attribute(model, "verbose", 0)
     optimize!(model)
     if termination_status(model) != MOI.OPTIMAL
         return false
     else 
         return objective_value(model), value.(s)
     end
+end
+
+function optimal_supply(p::EnergyConstrProb)
+    itp = translate_EFD(p)
+    A = p.N⁰' * itp.invL * itp.yc;
+    B = sqrt(p.N⁰' *inv(p.Q)* p.N⁰);
+    C = 0.25 * p.c' * inv(p.Q) * p.c;
+    B2 = B^2
+    return A + B2/2 + sqrt((2*A + B2)^2 - 4*(A^2-B2*C))/2
 end
 
 # Calculate the baseline supply needed to sustain the ecosystem with least biomass

@@ -52,9 +52,8 @@ function chevball(domain::InterPolySpheres)
     end
     @objective(model, Max, r)
     
-    set_optimizer(model, () -> Gurobi.Optimizer(GRB_ENV)); #> handling usage outside this package
-    set_optimizer_attribute(model, "OutputFlag", 0)
-    set_optimizer_attribute(model, "LogToConsole", 0)
+    set_optimizer(model, SCS.Optimizer); #> handling usage outside this package
+    set_optimizer_attribute(model, "verbose", 0)
     optimize!(model)
 
     if termination_status(model) != MOI.OPTIMAL
