@@ -5,7 +5,8 @@ using SpecialFunctions
 using LinearAlgebra
 using JuMP, SCS
 using Polyhedra, QHull
-using Plots, ProgressMeter
+using Plots
+using Printf,ProgressMeter
 
 # instead of "problem", these are just paramers. We need to reconfigurate this. 
 # Ideally allow people to perfom whatever constraints they like to do
@@ -138,12 +139,18 @@ end
 # n_thread: number thread of each sampling [future: make it parallel]
 # n_sample: number of sample per thread
 # n_layer: number of estimation phases per volume calculation
-function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10)
+function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10,show_p::Bool=true)
+    desc = @sprintf("Volume: %.2f to %.2f", Q_range[end], Q_range[1])
+    prog = show_p ? Progress(length(Q_range), desc=desc, showspeed=true) : nothing
+    
     if p.type == :indiv 
         volumes = [0.0 for _ in Q_range]
-        @showprogress desc="Volume: $(Q_range[1]) to $(Q_range[end])" for (i,S) in pairs(Q_range)
+        for (i,S) in pairs(Q_range)
             p.S = S
             volumes[i] = volume_EFD(p, true)
+            if prog !== nothing
+                next!(prog)
+            end
         end
 
     elseif p.type == :total
@@ -164,10 +171,7 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
         end
 
         r = 1.0;
-        @showprogress desc = @sprintf(
-            "Volume: %.2f to %.2f",
-            Q_range[end], Q_range[1]
-        ) for i in eachindex(regions)
+        for i in eachindex(regions)
             if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
                 break
             end
@@ -176,6 +180,12 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
             r = mean(inside_R_ii)
             b = mean([is_inside_sphere(s, balls[i+1]) for s in samples_i])
             volumes[i+1] = volumes[i] * r
+            if prog !== nothing
+                next!(prog)
+            end
+        end
+        if prog !== nothing
+            finish!(prog)
         end
 
         reverse!(Q_range); reverse!(volumes)
@@ -187,26 +197,23 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
 end
 
 
-
 include("core.jl")
 include("generate.jl")
 include("visualize.jl")
 include("analyze.jl")
 
 export EnergyConstrProb, EcosysConfig
-export check_feasible_EFD, sample_EFD, volume_EFD, volume_range_EFD
-export baseline_supply, total_supply
-export ecosys_config, generate_sigma_arrays, generate_problem, generate_sigma
+export check_feasible_EFD, sample_EFD, volume_EFD, volume_range_EFD, translate_EFD
+export baseline_supply, optimal_supply
+export ecosys_config, generate_sigma_arrays, generate_problem
 export extract_critical, extract_peak, score_saturation, score_unimodal
-export generate_trophic_chain, generate_trophic, perturb_trophic
+export generate_model_system, sub_model_system, select_range, volume_range_flux
 
 # ---- these exports for temporary development only ----
-export show_linear, show_quadratic
-export IsotropicTransParams, create_poly, translate_EFD
-export Sphere, rand_sphere, vol_sphere, InterPolySpheres, chevball, hr_step, hr_sample, is_inside, is_inside_sphere, volume_domain, show_chevball, grow_quadratic
-export smooth, smooth_curve
-export make_dissipative!
-export critical_energy, baseline_supply, optimal_supply
+export Sphere, IsotropicTransParams, InterPolySpheres
+export chevball, volume_domain, rand_sphere, vol_sphere
+export smooth, smooth_curve, generate_sigma
+export critical_energy
 # ---- ----
 
 end

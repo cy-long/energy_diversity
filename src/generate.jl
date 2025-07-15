@@ -17,6 +17,46 @@ struct EcosysConfig
     seed::Union{Nothing, Int}
 end
 
+function generate_model_system(size::Int, type::Symbol, seed::Int, σ_scale::Float64, d0::Float64, N0::Float64)
+    Random.seed!(seed)
+    type ∈ [:total, :indiv] || error("Type must be either :total or :indiv")
+    σ = generate_sigma(size, true, true, false, σ_scale, 1.0, 1.0, 0.5);
+    d = d0 * rand(Normal(1.0, 0.1), size)
+    N⁰ = N0 * rand(Normal(1.0, 0.1), size)
+    Λ = inv(σ); Q = (Λ + Λ') / 2; c = -Λ * d;
+    ϵ = fill(0.0, size);
+    p = EnergyConstrProb(σ, Λ, Q, c, ϵ, d, N⁰, size, 0.0, type);
+    return p
+end
+
+function sub_model_system(size::Int, p::EnergyConstrProb)
+    size ≤ p.K || error("Size must be less than or equal to the number of populations in the model system")
+    if size == p.K
+        return p
+    end
+    σ = p.σ[1:size, 1:size]
+    Λ = inv(σ); Q = (Λ + Λ') / 2; c = -Λ * p.d[1:size];
+    return EnergyConstrProb(σ, Λ, Q, c, fill(0.0, size), p.d[1:size], p.N⁰[1:size], size, 0.0, p.type)
+end
+
+function volume_range_flux(p::EnergyConstrProb, Q_range::Vector{Float64})
+    return [Q^p.K/(prod(p.N⁰)*factorial(p.K)) for Q in Q_range]
+end
+
+function select_range(p::EnergyConstrProb)
+    Q1 = baseline_supply(p);
+    Q2 = optimal_supply(p);
+    Q_range = vcat(
+        range(1e-4, Q1; length=25)[1:end], # scan the critical
+        range(Q1, 2*Q2; length=350+1)[2:end], # scan the optimum
+        range(2*Q2, max(10*Q2, 100.0); length=125+1)[2:end], # at least 10^2
+    )
+    return Q_range
+end
+
+
+# ---- old functions, need to be updated ----
+
 # Reconstruct this function accroding to new texts
 function ecosys_config(;
     K::Int, S_type::Symbol, n_scale::Float64=1.0, n_var::Float64=1.0, conne::Float64=1.0, 

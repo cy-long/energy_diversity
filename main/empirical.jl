@@ -122,4 +122,46 @@ end
 xlabel!("Calorie Level"); ylabel!("Co-presence Frequency");
 display(plt1)
 
+# Next to do: change K (size of combinations) and ><thre (initiation vs. realization)
 
+# # --- Histogram: which calorie level lead to peak co-presence frequency ---
+# max_levels = Int[];
+# for grp in groupby(results, :combo)
+#     push!(max_levels, argmax(grp.freq))
+# end
+# level_labels = ["low", "mid", "high"]
+# counts = countmap(max_levels)
+
+# # Bar plot on same axis
+# bar(level_labels, [counts[i] for i in 1:3],
+#     title = "Histogram of max coexistence level",
+#     xlabel = "Calories range",
+#     ylabel = "Number of combinations",
+#     legend = false)
+
+# ---- Let's do sth else: increasing the bins -----
+# for combo in taxa_combos
+#     sub = select(rela_abun_calo, [:calories, combo...])
+#     cals = sub[:, 1]
+#     coex_mask = [all(row .> thre) for row in eachrow(Matrix(sub[:, 2:end]))]
+
+#     cals_coex = cals[coex_mask]
+#     if isempty(cals_coex)
+#         continue
+#     end
+
+#     histogram(cals_coex, bins=20, legend=false,
+#               title=join(string.(combo), "+"),
+#               xlabel="Calories", ylabel="Coexistence count")
+#     display(current())  # or display(plot!)
+
+#     break  # 🛑 stop after first plot
+# end
+
+# # ---- 1. maximal numbers of taxa at each different calories level ---
+# thre = 1e-4
+# taxa_data = Tables.matrix(rela_abun_calo[:, 3:end]);
+# present = taxa_data .> thre;
+# coexist_counts = sum(present, dims=2);
+# coexist_counts = vec(coexist_counts);
+# daily_cals = rela_abun_calo.calories;
