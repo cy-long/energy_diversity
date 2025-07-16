@@ -6,7 +6,8 @@ using LinearAlgebra
 using JuMP, SCS
 using Polyhedra, QHull
 using Plots
-using Printf,ProgressMeter
+using Printf, ProgressMeter
+using Loess
 
 # instead of "problem", these are just paramers. We need to reconfigurate this. 
 # Ideally allow people to perfom whatever constraints they like to do

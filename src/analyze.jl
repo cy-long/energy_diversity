@@ -1,4 +1,4 @@
-using LinearAlgebra, Loess
+using LinearAlgebra
 
 # tackle the problem of inf in y
 
