@@ -140,9 +140,9 @@ end
 # n_thread: number thread of each sampling [future: make it parallel]
 # n_sample: number of sample per thread
 # n_layer: number of estimation phases per volume calculation
-function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10,show_p::Bool=true)
+function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10, show_p::Bool=true)
     desc = @sprintf("Volume: %.2f to %.2f", Q_range[end], Q_range[1])
-    prog = show_p ? Progress(length(Q_range), desc=desc, showspeed=true) : nothing
+    prog = show_p ? Progress(length(Q_range), dt = 12.0, desc=desc, showspeed=true) : nothing
     
     if p.type == :indiv 
         volumes = [0.0 for _ in Q_range]

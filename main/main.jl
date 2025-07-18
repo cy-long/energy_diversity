@@ -20,27 +20,30 @@ if TEST_MODE
     p = generate_model_system(3, :total, seed, 1.0, 1.0, 1.0);
     Q_range = select_range(p);
     devols = volume_range_flux(p, Q_range);
-    vols = volume_range_EFD(p, Q_range, n_sample=25000, show_p=false);
+    vols = volume_range_EFD(p, Q_range, n_sample=2500, show_p=true);
     plot(Q_range, vols./devols, xaxis=:log10,lw=1.5,xlim=(1,Q_range[end]),title="Single case")
+    savefig("figure/test_single_case.pdf")
 end
 
-# loop over 27*4 cases with 2 types
-σ_scale_range = [0.1, 1.0, 10.0];
-d0_range = [0.1, 1.0, 10.0];
-N0_range = [0.1, 1.0, 10.0];
-S_range = [2,4,6,8];
-types = [:total, :indiv];
-total_cases = length(σ_scale_range) * length(d0_range) * length(N0_range) * length(S_range);
+# loop over 15*4 cases with 2 types
+@info "Running main computation with seed=$(seed)"
 
-if !TEST_MODE
+# σ_scale_range = [0.1, 1.0, 10.0]; # d0_range = [0.1, 1.0, 10.0]; # redundant
+σscale_d0_range = [(1.0, 1.0), (0.1, 1.0), (1.0, 0.1), (0.1, 10.0), (10.0, 0.1)];
+N0_range = [0.1, 1.0, 10.0];
+S_range = [2, 4, 6, 8];
+types = [:total, :indiv];
+total_cases = length(σscale_d0_range) * length(N0_range) * length(S_range) * length(types);
+
+function run_main(seed)
     results = Vector{Dict}(); counter = 1;
-    for (type, σsc, d0, N0) in Iterators.product(types, σ_scale_range, d0_range, N0_range)
+    for (type, (σsc, d0), N0) in Iterators.product(types, σscale_d0_range, N0_range)
         p0 = generate_model_system(S_range[end], :total, seed, σsc, d0, N0) # dummy, grand system
         for S in S_range
             p = sub_model_system(S, p0); Q_range = select_range(p); # inherit :total to select Q_range
             @info "Computing ($counter / $total_cases): type: $(type), S=$(S), σsc=$(σsc), d0=$(d0), N0=$(N0)\n"
             p.type = type;
-            vols = volume_range_EFD(p, Q_range, n_sample=2*10^4);
+            vols = volume_range_EFD(p, Q_range, n_sample=2*10^4, show_p=true);
             devols = volume_range_flux(p, Q_range)
             push!(results, Dict(
                 :S => S, :σsc => σsc, :d0 => d0, :N0 => N0, :type => type,
@@ -49,7 +52,12 @@ if !TEST_MODE
             counter += 1;
         end
     end
+    return results
+end
+
+if !TEST_MODE
+    results = run_main(seed);
 end
 
 mkpath("data/main")
-@save "data/main/seed$(seed).jld2" results
+@save "data/main/results_seed$(seed).jld2" results
