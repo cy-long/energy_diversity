@@ -165,7 +165,7 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
             for (S, q) in zip(Q_range, quadbounds)]
         balls = [chevball(r) for r in regions]
 
-        volumes[1] = volume_domain(regions[1], n_layer, 1, true) #> catch the lower level warning
+        volumes[1] = volume_domain(regions[1], n_layer, 1, true)
         if volumes[1] == 0.0
             reverse!(Q_range)
             return volumes
@@ -196,7 +196,6 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
     end
     return volumes
 end
-
 
 include("core.jl")
 include("generate.jl")

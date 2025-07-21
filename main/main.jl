@@ -28,7 +28,6 @@ end
 # loop over 15*4 cases with 2 types
 @info "Running main computation with seed=$(seed)"
 
-# σ_scale_range = [0.1, 1.0, 10.0]; # d0_range = [0.1, 1.0, 10.0]; # redundant
 σscale_d0_range = [(1.0, 1.0), (0.1, 1.0), (1.0, 0.1), (0.1, 10.0), (10.0, 0.1)];
 N0_range = [0.1, 1.0, 10.0];
 S_range = [2, 4, 6, 8];
@@ -50,14 +49,16 @@ function run_main(seed)
                 :Qs => Q_range, :vols => vols, :devols => devols,
             ))
             counter += 1;
+            if TEST_MODE && counter > 2
+                @info "Test mode: stopping after 10 cases"
+                return results;
+            end
         end
     end
     return results
 end
 
-if !TEST_MODE
-    results = run_main(seed);
-end
+results = run_main(seed);
 
 mkpath("data/main")
 @save "data/main/results_seed$(seed).jld2" results

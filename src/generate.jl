@@ -43,17 +43,27 @@ function volume_range_flux(p::EnergyConstrProb, Q_range::Vector{Float64})
     return [Q^p.K/(prod(p.N⁰)*factorial(p.K)) for Q in Q_range]
 end
 
+# function select_range(p::EnergyConstrProb)
+#     Q1 = baseline_supply(p);
+#     Q2 = optimal_supply(p);
+#     Q_range = vcat(
+#         range(1e-4, Q1; length=25)[1:end], # scan the critical
+#         range(Q1, 2*Q2; length=350+1)[2:end], # scan the optimum
+#         range(2*Q2, max(10*Q2, 100.0); length=125+1)[2:end], # at least 10^2
+#     )
+#     return Q_range
+# end
+
 function select_range(p::EnergyConstrProb)
-    Q1 = baseline_supply(p);
-    Q2 = optimal_supply(p);
+    Q1 = baseline_supply(p)
+    Q2 = optimal_supply(p)
     Q_range = vcat(
-        range(1e-4, Q1; length=25)[1:end], # scan the critical
-        range(Q1, 2*Q2; length=350+1)[2:end], # scan the optimum
-        range(2*Q2, max(10*Q2, 100.0); length=125+1)[2:end], # at least 10^2
+        exp.(range(log(1e-4), log(Q1); length=25)),            # before critical
+        exp.(range(log(Q1), log(Q2); length=351)[2:end]),     # around optimum
+        exp.(range(log(Q2), log(max(10Q2, 100.0)); length=126)[2:end])  # tail
     )
     return Q_range
 end
-
 
 # ---- old functions, need to be updated ----
 

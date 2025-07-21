@@ -188,7 +188,7 @@ microb_calo.calories = [calories[findfirst(==(t), timestamps)] for t in microb_c
 microb_calo = select(microb_calo, :time, :calories, Not([:time, :calories])); # reorder colums
 
 # --- Aggregate OTU counts into taxonomy level ---
-taxo_level = "Family" # choose from "Order", "Family", "Genus", "Species"
+taxo_level = "Order" # choose from "Order", "Family", "Genus", "Species"
 taxa = unique(getproperty(microb_keys, Symbol(taxo_level)));
 taxa_calo = DataFrame(time = microb_calo.time, calories = microb_calo.calories);
 # sum OTU counts into corresponding taxon
@@ -216,7 +216,7 @@ final_rela_calo, cal_counts = categorize_calories(final_rela_calo, cals_cut);
 results_K4 = summarize_size(final_rela_calo, taxa_candidates, K, 1e-3, cal_counts);
 
 histogram(results_K4.presence)
-show_top_communities(results_K4, 20, K, 1e-4)
+show_top_communities(results_K4, 20, K, 1e-3)
 
 # ---- 2. Summarize peak distributions for K∈[2,3,4,5] ----
 K_ranges = [2,3,4,5];

@@ -16,10 +16,11 @@ struct Sphere
     r::Float64 # radius
 end
 
-function rand_sphere(sp::Sphere)
+function rand_sphere(sp::Sphere, cut::Float64)
+    0.0 < cut <= 1.0 || throw(ArgumentError("cut must be in (0, 1]"))
     K = length(sp.c)
     e = randn(K)
-    x = sp.c + rand(Uniform(0, sp.r/norm(e))) * e
+    x = sp.c + rand(Uniform(0, cut * sp.r/norm(e))) * e
     return x
 end
 
@@ -65,54 +66,64 @@ end
 
 function hr_step(x::Vector{Float64}, region::InterPolySpheres)
     Δ = randn(size(x,1))
-
     A = region.A; b = region.b
     λs = (b - A*x) ./ (A * Δ)
 
     for sp in region.sps
         yc = sp.c; r = sp.r
-        a = dot(Δ, Δ); b = 2*dot(Δ, x-yc); c = dot(x-yc,x-yc)-r^2; d = sqrt(b^2 - 4*a*c)
+        a = dot(Δ, Δ); b = 2*dot(Δ, x-yc); c = dot(x-yc,x-yc)-r^2; 
+        if b^2 - 4*a*c <= 0
+            @info "HR stuck with ball boundaries"
+            return nothing
+        end
+        d = sqrt(b^2 - 4*a*c)
         λs = vcat(λs, [(-b-d)/(2*a), (-b+d)/(2*a)])
     end
 
     λ_min = isempty(λs[λs .< 0]) ? 0 : maximum(λs[λs .< 0])
     λ_max = isempty(λs[λs .> 0]) ? 0 : minimum(λs[λs .> 0])
-    if λ_min < λ_max-1e-7
+    if λ_min < λ_max-1e-6
         λ = rand(Uniform(λ_min, λ_max))
         return x + λ * Δ
     else
+        @info "HR stuck with polyhedron boundaries"
         return nothing
     end
 end
 
 # regions will be intersecting domain with ϵ*chevball(domain), whose chevball is the same as for the domain
 # therefore, no need to recompute chevball for each region, as it could be costy in time
-function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, 
-    start::Union{Sphere,Vector{Vector{Float64}}}=chevball(region))
+function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, start::Union{Sphere,Vector{Vector{Float64}}}=chevball(region))
     if isa(start, Sphere)
-        seeds = [rand_sphere(start) for _ in 1:n_threads]    
-    else
-        size(start,1) >= n_threads || throw(ErrorException("insufficient sampling seeds"))
-        seeds = start
-    end
-    
-    samples = []
-    burn_in = floor(Int, n_samples/2) # burn-in period
-
-    for i in 1:n_threads
-        x = seeds[i]
-        thread = []
-        for i in 1:n_samples
-            x = hr_step(x, region)
-            if isnothing(x)
-                x = hr_step(seeds[i], region)
-                @warn "HR failed, restart at seeds"
-            end
-            if i > burn_in
-                push!(thread, x) #TODO: thinning?
+        x_seeds = Vector{Vector{Float64}}()
+        while length(x_seeds) < n_threads
+            candidate = rand_sphere(start, 0.9)
+            if is_inside(candidate, region)
+                push!(x_seeds, candidate)
             end
         end
-    samples = vcat(samples, thread)
+    else
+        size(start,1) >= n_threads || throw(ErrorException("insufficient sampling starting points"))
+        x_seeds = start
+    end
+
+    burn_in = floor(Int, n_samples/2)
+    idx = 1; samples = Vector{Vector{Float64}}(undef, n_threads * (n_samples - burn_in))
+
+    for i in 1:n_threads # can be parallelized
+        x = x_seeds[i]
+        for j in 1:n_samples
+            x1 = hr_step(x, region)
+            if isnothing(x1)
+                if j <= burn_in
+                    @warn "HR sampling gets stuck in early steps"
+                end
+                x1 = hr_step(x_seeds[i], region) # manually reset to start
+            end
+            if j > burn_in
+                samples[idx] = x1; idx += 1; x = x1
+            end
+        end
     end
     return samples
 end
@@ -127,7 +138,7 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
     chev = chevball(domain)
     r = chev.r
     if r == 0.0 
-        @warn "Chevball is infeasible in volume_domain"
+        @warn "domain has zero volume: empty chevball"
         return 0.0
     end
 
@@ -156,15 +167,15 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
     end
 
     # perform multiphase Monte Carlo sampling
-    vol_ratio = Float64[]
+    vol_ratio = Vector{Float64}(undef, length(r_phs))
     for i in eachindex(r_phs)
         if i == firstindex(r_phs)
-            push!(vol_ratio, vol_sphere(sp_phs[i]))
+            vol_ratio[i] = vol_sphere(sp_phs[i])
             continue
         end
         samples_i = hr_sample(regions[i], 20, 10000, chev)
         inside_i = [is_inside(x, regions[i-1]) for x in samples_i]
-        push!(vol_ratio, 1 / mean(inside_i))
+        vol_ratio[i] = 1 / mean(inside_i)
     end
 
     return prod(vol_ratio)
