@@ -16,12 +16,35 @@ struct Sphere
     r::Float64 # radius
 end
 
+struct InterPolySpheres
+    A::Matrix{Float64}
+    b::Vector{Float64}
+    sps::Vector{Sphere}
+    type::Symbol # :indiv or :total
+end
+
 function rand_sphere(sp::Sphere, cut::Float64)
     0.0 < cut <= 1.0 || throw(ArgumentError("cut must be in (0, 1]"))
     K = length(sp.c)
     e = randn(K)
     x = sp.c + rand(Uniform(0, cut * sp.r/norm(e))) * e
     return x
+end
+
+function rand_warmup(domain::InterPolySpheres, ball::Sphere, n_threads::Int, max_trials::Int)
+    x_warmup = Vector{Vector{Float64}}(undef, n_threads)
+    k = 0
+    for _ in 1:max_trials
+        x = rand_sphere(ball, 0.95)
+        if is_inside(x, domain)
+            x_warmup[k+1] = x  # Index is valid because we preallocated size n_threads
+            k += 1
+            if k >= n_threads
+                return x_warmup
+            end
+        end
+    end
+    error("rand_warmup: Failed to generate $n_threads seeds after $max_trials trials.")
 end
 
 function vol_sphere(sp::Sphere)
@@ -31,13 +54,6 @@ end
 
 function is_inside_sphere(x::Vector{Float64}, sp::Sphere)
     return norm(x - sp.c) <= sp.r
-end
-
-struct InterPolySpheres
-    A::Matrix{Float64}
-    b::Vector{Float64}
-    sps::Vector{Sphere}
-    type::Symbol # :indiv or :total
 end
 
 function chevball(domain::InterPolySpheres)
@@ -95,13 +111,7 @@ end
 # therefore, no need to recompute chevball for each region, as it could be costy in time
 function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, start::Union{Sphere,Vector{Vector{Float64}}}=chevball(region))
     if isa(start, Sphere)
-        x_seeds = Vector{Vector{Float64}}()
-        while length(x_seeds) < n_threads
-            candidate = rand_sphere(start, 0.9)
-            if is_inside(candidate, region)
-                push!(x_seeds, candidate)
-            end
-        end
+        x_seeds = rand_warmup(region, start, n_threads, 100*n_threads)
     else
         size(start,1) >= n_threads || throw(ErrorException("insufficient sampling starting points"))
         x_seeds = start

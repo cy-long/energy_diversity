@@ -42,7 +42,7 @@ function run_main(seed)
             p = sub_model_system(S, p0); Q_range = select_range(p); # inherit :total to select Q_range
             @info "Computing ($counter / $total_cases): type: $(type), S=$(S), σsc=$(σsc), d0=$(d0), N0=$(N0)\n"
             p.type = type;
-            vols = volume_range_EFD(p, Q_range, n_sample=2*10^4, show_p=true);
+            vols = volume_range_EFD(p, Q_range, n_sample=2*10^4, show_p=true, show_dt = 12.0);
             devols = volume_range_flux(p, Q_range)
             push!(results, Dict(
                 :S => S, :σsc => σsc, :d0 => d0, :N0 => N0, :type => type,

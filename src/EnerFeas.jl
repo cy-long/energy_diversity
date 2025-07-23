@@ -140,9 +140,9 @@ end
 # n_thread: number thread of each sampling [future: make it parallel]
 # n_sample: number of sample per thread
 # n_layer: number of estimation phases per volume calculation
-function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10, show_p::Bool=true)
-    desc = @sprintf("Volume: %.2f to %.2f", Q_range[end], Q_range[1])
-    prog = show_p ? Progress(length(Q_range), dt = 12.0, desc=desc, showspeed=true) : nothing
+function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_thread::Int=10, n_sample::Int=10^4, n_layer::Int=10, show_p::Bool=true, show_dt::Float64=0.5)
+    desc = @sprintf("Volume: %.2f to %.2f", Q_range[1], Q_range[end])
+    prog = show_p ? Progress(length(Q_range), dt = show_dt, desc=desc, showspeed=true) : nothing
     
     if p.type == :indiv 
         volumes = [0.0 for _ in Q_range]
@@ -173,13 +173,19 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
 
         r = 1.0;
         for i in eachindex(regions)
-            if r < 1e-6 || i == length(regions) || balls[i].r < 1e-9
+            if i == length(regions) || balls[i].r < 5*1e-5 || r < 1e-6
                 break
             end
-            samples_i = hr_sample(regions[i], n_thread, n_sample, balls[i])
-            inside_R_ii = [is_inside(s, regions[i+1]) for s in samples_i]
-            r = mean(inside_R_ii)
-            b = mean([is_inside_sphere(s, balls[i+1]) for s in samples_i])
+            
+            samples_i = nothing
+            try
+                samples_i = hr_sample(regions[i], n_thread, n_sample, balls[i])
+            catch e
+                @info "Sampling stalled at region $i, cutoff as zero volume."
+                break
+            end
+
+            r = mean([is_inside(s, regions[i+1]) for s in samples_i])
             volumes[i+1] = volumes[i] * r
             if prog !== nothing
                 next!(prog)
@@ -211,9 +217,11 @@ export generate_model_system, sub_model_system, select_range, volume_range_flux
 
 # ---- these exports for temporary development only ----
 export Sphere, IsotropicTransParams, InterPolySpheres
-export chevball, volume_domain, rand_sphere, vol_sphere
+export chevball, volume_domain, vol_sphere
 export smooth, smooth_curve, generate_sigma
 export critical_energy
+export rand_sphere, hr_step, hr_sample, is_inside
+export rand_warmup
 # ---- ----
 
 end

@@ -32,3 +32,5 @@ postanalysis/**
 figures/**
 data/**
 logs/**
+logs.*/**
+submit.sh
