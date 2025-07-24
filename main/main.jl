@@ -1,10 +1,10 @@
 """ A comprehensive survey on the feasibility domains (main results)"""
-# Overview: 1. Generate a model ecosystem with S₀=8 populations with random parameters σ, d, N⁰. 2. Scale these three parameters in 3³=27 combinations; 3. downsize them by selecting [1:S] submatrix (subvector) where S∈{2,4,6,8}. 4. Compute the feasibility domains in each case. Repeat this procedure for 96 replications (in total: 96*27*4=10368 computations).
+# Overview: 1. Generate a model ecosystem with S₀=8 populations with random parameters σ, d, N⁰. 2. Scale these three parameters in 9 combinations; 3. downsize them by selecting [1:S] submatrix (subvector) where S ∈ {2,4,6,8}. 4. Compute the feasibility domains in each case. Repeat this procedure for 100 replications.
 
 # 1. generating the model parameters: all iid. across species
 # σ ∼ N(0,1²) → energetive → dissipative w/ σ₀=0.5; d ∼ N(1,0.1²); N⁰∼ N(1,0.1²)
 # 2. scaling the parameters:
-# σ → s_sigma * σ; s_sigma ∈{0.1, 1.0, 10.0}; d ∼ d₀ * d; d₀∈{0.1, 1.0, 10.0}; N⁰ ∼ N₀ * N⁰; N₀∈{0.1, 1.0, 10.0}
+# σ → s_sigma * σ; s_sigma ∈{0.5, 1.0, 2.0}; d ∼ d₀ * d; d₀∈{0.5, 1.0, 2.0}; N⁰ ∼ N₀ * N⁰; N₀∈{0.5, 1.0, 2.0}
 # 3. downsize the model system with S ∈ {2, 4, 6, 8} populations
 
 include("../src/EnerFeas.jl");
@@ -25,21 +25,24 @@ if TEST_MODE
     savefig("figure/test_single_case.pdf")
 end
 
-# loop over 15*4 cases with 2 types
 @info "Running main computation with seed=$(seed)"
-
-σscale_d0_range = [(1.0, 1.0), (0.1, 1.0), (1.0, 0.1), (0.1, 10.0), (10.0, 0.1)];
-N0_range = [0.1, 1.0, 10.0];
+params_range = [
+    (1.0, 1.0, 1.0), 
+    (1.0, 2.0, 1.0), (1.0, 0.5, 1.0),
+    (0.5, 1.0, 1.0), (2.0, 1.0, 1.0),
+    (1.0, 1.0, 0.5), (1.0, 1.0, 2.0),
+    (2.0, 2.0, 1.0), (0.5, 0.5, 1.0)
+];
 S_range = [2, 4, 6, 8];
 types = [:total, :indiv];
-total_cases = length(σscale_d0_range) * length(N0_range) * length(S_range) * length(types);
+total_cases = length(params_range) * length(S_range) * length(types);
 
 function run_main(seed)
     results = Vector{Dict}(); counter = 1;
-    for (type, (σsc, d0), N0) in Iterators.product(types, σscale_d0_range, N0_range)
+    for (type, (σsc, d0, N0)) in Iterators.product(types, params_range)
         p0 = generate_model_system(S_range[end], :total, seed, σsc, d0, N0) # dummy, grand system
         for S in S_range
-            p = sub_model_system(S, p0); Q_range = select_range(p); # inherit :total to select Q_range
+            p = sub_model_system(S, p0); Q_range = select_range(p);
             @info "Computing ($counter / $total_cases): type: $(type), S=$(S), σsc=$(σsc), d0=$(d0), N0=$(N0)\n"
             p.type = type;
             vols = volume_range_EFD(p, Q_range, n_sample=2*10^4, show_p=true, show_dt = 12.0);
