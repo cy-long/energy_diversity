@@ -1,9 +1,9 @@
 """
-This scripts implements the backend computational geometry. Constrained energetic problem can be  generalized into the InterPolySpheres type, where
+This scripts implements the backend computational geometry. Constrained energetic problem can be  generalized into the InterPolyBalls type, where
 - The convex polyhedron is from feasibility conditions;
 - The spheres are total energetic boundary (if applicable) and auxillary spheres.
 
-Around InterPolySpheres we build sampling and volume estimation methods. Sampling is perfomed by by RDHR (random direction hit-and-run¹²), Volume estimation is performed by MMC (multiphase Monte Carlo³⁴).
+Around InterPolyBalls we build sampling and volume estimation methods. Sampling is perfomed by by RDHR (random direction hit-and-run¹²), Volume estimation is performed by MMC (multiphase Monte Carlo³⁴).
 
 For linear constraints, trianglation method is included as a comparison.
 
@@ -16,7 +16,7 @@ struct Sphere
     r::Float64 # radius
 end
 
-struct InterPolySpheres
+struct InterPolyBalls
     A::Matrix{Float64}
     b::Vector{Float64}
     sps::Vector{Sphere}
@@ -31,13 +31,13 @@ function rand_sphere(sp::Sphere, cut::Float64)
     return x
 end
 
-function rand_warmup(domain::InterPolySpheres, ball::Sphere, n_threads::Int, max_trials::Int)
+function rand_warmup(domain::InterPolyBalls, ball::Sphere, n_threads::Int, max_trials::Int)
     x_warmup = Vector{Vector{Float64}}(undef, n_threads)
     k = 0
     for _ in 1:max_trials
         x = rand_sphere(ball, 0.95)
         if is_inside(x, domain)
-            x_warmup[k+1] = x  # Index is valid because we preallocated size n_threads
+            x_warmup[k+1] = x
             k += 1
             if k >= n_threads
                 return x_warmup
@@ -56,7 +56,7 @@ function is_inside_sphere(x::Vector{Float64}, sp::Sphere)
     return norm(x - sp.c) <= sp.r
 end
 
-function chevball(domain::InterPolySpheres)
+function chevball(domain::InterPolyBalls)
     A = domain.A; b = domain.b; K=size(A,2)
     A_norms = [norm(row) for row in eachrow(A)]
 
@@ -80,7 +80,7 @@ function chevball(domain::InterPolySpheres)
     end
 end
 
-function hr_step(x::Vector{Float64}, region::InterPolySpheres)
+function hr_step(x::Vector{Float64}, region::InterPolyBalls)
     Δ = randn(size(x,1))
     A = region.A; b = region.b
     λs = (b - A*x) ./ (A * Δ)
@@ -109,7 +109,7 @@ end
 
 # regions will be intersecting domain with ϵ*chevball(domain), whose chevball is the same as for the domain
 # therefore, no need to recompute chevball for each region, as it could be costy in time
-function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2000, start::Union{Sphere,Vector{Vector{Float64}}}=chevball(region))
+function hr_sample(region::InterPolyBalls, n_threads::Int=10, n_samples::Int=2000, start::Union{Sphere,Vector{Vector{Float64}}}=chevball(region))
     if isa(start, Sphere)
         x_seeds = rand_warmup(region, start, n_threads, 100*n_threads)
     else
@@ -138,13 +138,13 @@ function hr_sample(region::InterPolySpheres, n_threads::Int=10, n_samples::Int=2
     return samples
 end
 
-function is_inside(x::Vector{Float64}, region::InterPolySpheres)
+function is_inside(x::Vector{Float64}, region::InterPolyBalls)
     in_sps = [norm(x - sp.c) <= sp.r for sp in region.sps]
     in_po = region.A * x .<= region.b
     return all(in_sps) && all(in_po)
 end
 
-function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bool=false)
+function volume_domain(domain::InterPolyBalls, N::Int=10, eN::Int=1, exact::Bool=false)
     chev = chevball(domain)
     r = chev.r
     if r == 0.0 
@@ -162,7 +162,7 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
         ρ = maximum([norm(v-chev.c) for v in vertices])
     elseif domain.type == :total
         sp0 = domain.sps[1]
-        samples_0 = hr_sample(domain, 1, 5000, chev)
+        samples_0 = hr_sample(domain, 1, 10000, chev)
         ρ = maximum([norm(x-chev.c) for x in samples_0]) # slightly dumb way to sandwhich the domain
     end
 
@@ -171,9 +171,9 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
     sp_phs = [Sphere(chev.c, r_ph) for r_ph in r_phs]
 
     if domain.type == :indiv 
-        regions = [InterPolySpheres(domain.A, domain.b, [sp], :indiv) for sp in sp_phs]
+        regions = [InterPolyBalls(domain.A, domain.b, [sp], :indiv) for sp in sp_phs]
     elseif domain.type == :total
-        regions = [InterPolySpheres(domain.A, domain.b, [sp0, sp], :total) for sp in sp_phs]
+        regions = [InterPolyBalls(domain.A, domain.b, [sp0, sp], :total) for sp in sp_phs]
     end
 
     # perform multiphase Monte Carlo sampling
@@ -183,7 +183,7 @@ function volume_domain(domain::InterPolySpheres, N::Int=10, eN::Int=1, exact::Bo
             vol_ratio[i] = vol_sphere(sp_phs[i])
             continue
         end
-        samples_i = hr_sample(regions[i], 20, 10000, chev)
+        samples_i = hr_sample(regions[i], 10, 10000, chev)
         inside_i = [is_inside(x, regions[i-1]) for x in samples_i]
         vol_ratio[i] = 1 / mean(inside_i)
     end

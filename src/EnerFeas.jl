@@ -97,10 +97,10 @@ function sample_EFD(p::EnergyConstrProb, N::Int=10000, go_back::Bool=true)
     check_feasible_EFD(p) || throw(ErrorException("Cannot sample on infeasible domain"))
     itp = translate_EFD(p)
     if p.type == :indiv
-        domain = InterPolySpheres(itp.A, itp.b, [], :indiv)
+        domain = InterPolyBalls(itp.A, itp.b, [], :indiv)
     elseif p.type == :total
         sp0 = Sphere(itp.yc, sqrt(itp.t))
-        domain = InterPolySpheres(itp.A, itp.b, [sp0], :total)
+        domain = InterPolyBalls(itp.A, itp.b, [sp0], :total)
     end
     nt = 10; ns = ceil(Int, 2*N/nt) #TODO: find the best nt and ns
     samples = hr_sample(domain, nt, ns, chevball(domain))
@@ -121,11 +121,11 @@ function volume_EFD(p::EnergyConstrProb, exact::Bool=false, N::Int=10, eN::Int=1
     itp = translate_EFD(p)
 
     if p.type == :indiv
-        domain = InterPolySpheres(itp.A, itp.b, [], :indiv)
+        domain = InterPolyBalls(itp.A, itp.b, [], :indiv)
 
     elseif p.type == :total
         sp0 = Sphere(itp.yc, sqrt(itp.t))
-        domain = InterPolySpheres(itp.A, itp.b, [sp0], :total)
+        domain = InterPolyBalls(itp.A, itp.b, [sp0], :total)
         exact && throw(ErrorException("Exact volume not supported for Total Energy Constraint"))
         # vol_full = vol_sphere(sp0) * det(itp.invL)
     end
@@ -161,7 +161,7 @@ function volume_range_EFD(p::EnergyConstrProb, Q_range::Vector{Float64}; n_threa
         itp = translate_EFD(p)
         quadbounds = [Sphere(itp.yc, sqrt(S + itp.t-p.S))
             for S in Q_range] 
-        regions = [InterPolySpheres(itp.A, vcat(itp.b[1:end-1], itp.b[end]+S-p.S), [q], :total)
+        regions = [InterPolyBalls(itp.A, vcat(itp.b[1:end-1], itp.b[end]+S-p.S), [q], :total)
             for (S, q) in zip(Q_range, quadbounds)]
         balls = [chevball(r) for r in regions]
 
@@ -205,7 +205,6 @@ end
 
 include("core.jl")
 include("generate.jl")
-include("visualize.jl")
 include("analyze.jl")
 
 export EnergyConstrProb, EcosysConfig
@@ -215,8 +214,8 @@ export ecosys_config, generate_sigma_arrays, generate_problem
 export extract_critical, extract_peak, score_saturation, score_unimodal
 export generate_model_system, sub_model_system, select_range, volume_range_flux
 
-# ---- these exports for temporary development only ----
-export Sphere, IsotropicTransParams, InterPolySpheres
+# ---- these lower-end exports for temporary development only ----
+export Sphere, IsotropicTransParams, InterPolyBalls
 export chevball, volume_domain, vol_sphere
 export smooth, smooth_curve, generate_sigma
 export critical_energy

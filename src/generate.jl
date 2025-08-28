@@ -43,24 +43,13 @@ function volume_range_flux(p::EnergyConstrProb, Q_range::Vector{Float64})
     return [Q^p.K/(prod(p.N⁰)*factorial(p.K)) for Q in Q_range]
 end
 
-# function select_range(p::EnergyConstrProb)
-#     Q1 = baseline_supply(p);
-#     Q2 = optimal_supply(p);
-#     Q_range = vcat(
-#         range(1e-4, Q1; length=25)[1:end], # scan the critical
-#         range(Q1, 2*Q2; length=350+1)[2:end], # scan the optimum
-#         range(2*Q2, max(10*Q2, 100.0); length=125+1)[2:end], # at least 10^2
-#     )
-#     return Q_range
-# end
-
 function select_range(p::EnergyConstrProb)
-    Q1 = baseline_supply(p)
-    Q2 = optimal_supply(p)
+    Q0 = baseline_supply(p)
+    Q1 = optimal_supply(p)
     Q_range = vcat(
-        exp.(range(log(1e-4), log(Q1); length=25)),            # before critical
-        exp.(range(log(Q1), log(Q2); length=351)[2:end]),     # around optimum
-        exp.(range(log(Q2), log(max(10Q2, 100.0)); length=126)[2:end])  # tail
+        exp.(range(log(1e-4), log(Q0); length=25)),            # before critical
+        exp.(range(log(Q0), log(Q1); length=351)[2:end]),     # around optimum
+        exp.(range(log(Q1), log(max(10Q1, 100.0)); length=126)[2:end])  # tail
     )
     return Q_range
 end
@@ -188,70 +177,3 @@ function generate_problem(ec::EcosysConfig, σ::Matrix{Float64})
     S = 0.0
     return EnergyConstrProb(σ,Λ,Q,c,ϵ,d,N⁰,ec.K,S,ec.S_type)
 end
-
-
-# Tried to analyze trophic systems but didn't find immediate results.
-# function generate_trophic_chain(K::Int, n_scale::Float64=1.0, n_var::Float64=1.0, effi_mean::Float64=0.5, effi_var::Float64=0.1)
-#     σ = abs.(Matrix(Diagonal(rand(Normal(0, n_var),K))))
-#     uptake = n_scale * abs.(rand(Normal(0, n_var), K-1))
-#     effi = rand(Normal(effi_mean, effi_var), K-1); effi[effi .< 0.0] .= 0.0
-#     intake = -effi .* uptake
-#     for i in 1:K-1
-#         σ[i, i+1] = uptake[i]
-#         σ[i+1, i] = intake[i]
-#     end
-#     make_dissipative!(σ)
-#     return σ
-# end
-
-
-# function generate_simple_chain(K::Int, a::Float64=2.0, b::Float64=1.0, c::Float64=1.0)
-#     σ = diagm(a * ones(K))
-#     for i in 1:K-1
-#         σ[i, i+1] = c
-#         σ[i+1, i] = -b
-#     end
-#     make_dissipative!(σ)
-#     return σ
-# end
-
-
-# f: fraction of +-, --, ++; δ: probability of perturbation for +-;
-# signs are reversed in σ matrix; connectance set as 1.0;
-# setup a cascade-like trophic chain, lower # eaten by higher #
-# function generate_trophic(K::Int, f_np::Float64=1.0, f_nn::Float64=0.0, f_pp::Float64=0.0)
-#     if f_np + f_nn + f_pp > 1.0 || f_np < 0.0 || f_nn < 0.0 || f_pp < 0.0
-#         throw(ArgumentError(("invalid distribution of sign patterns")))
-#     end
-#     σ = abs.(randn(K, K))
-#     signs = zeros(Int8, K, K)
-#     for i in 1:K-1, j in i+1:K
-#         r = rand()
-#         if r < f_pp
-#             signs[i,j] = 1; signs[j,i] = 1
-#         elseif r < f_pp + f_nn
-#             signs[i,j] = -1; signs[j,i] = -1
-#         elseif r < f_pp + f_nn + f_np
-#             signs[i,j] = -1; signs[j,i] = 1
-#             x,y = sort(abs.([σ[i,j], σ[j,i]]))
-#             σ[i,j] = y; σ[j,i] =x
-#         end
-#     end
-#     σ = -σ .* signs # reverse the sign because of the convention
-#     make_dissipative!(σ)
-#     return σ
-# end
-
-
-# function perturb_trophic(σ::AbstractMatrix, δ::Float64=0.0)
-#     σ_new = copy(σ)
-#     K = size(σ, 1)
-#     for i in 1:K-1, j in i+1:K
-#         if σ_new[i,j]*σ_new[j,i] < 0.0 && rand() < δ # variance might be high
-#             σ_new[i,j] = -σ_new[i,j]
-#             σ_new[j,i] = -σ_new[j,i]
-#         end
-#     end
-#     make_dissipative!(σ_new, 0.1)
-#     return σ_new
-# end

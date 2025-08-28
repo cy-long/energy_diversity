@@ -13,7 +13,7 @@ ecs_total = [ecosys_config(K=4, S_type=:total, d_param = d0, ϵ_param=0.0, seed=
 
 Q_range_t = vcat(1e-4:0.2:100.0);
 
-vols_total = Vector{Vector{Vector{Float64}}}(undef, 3); 
+vols_total = Vector{Vector{Vector{Float64}}}(undef, 3);
 Random.seed!(345);
 
 for (i, ec) in enumerate(ecs_total)
@@ -26,6 +26,8 @@ for (i, ec) in enumerate(ecs_total)
     end
     vols_total[i] = vols
 end
+
+@load "data/sensitivity/demand.jld"
 
 plt_t = plot(
     framestyle=:box, grid=false,
@@ -55,7 +57,7 @@ for (vols, la, co, N0) in zip(vols_total, labels, colors, d0s)
 end
 
 display(plt_t)
-savefig(plt_t, "figures/d_total.pdf");
+# savefig(plt_t, "figures/d_total.pdf");
 
 
 # ----- Individual ------

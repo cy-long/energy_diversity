@@ -6,7 +6,7 @@ using Random, Distributions, LinearAlgebra
 using Plots, ProgressMeter, IterTools
 using LaTeXStrings
 
-labels = [L"s_\sigma=1.0", L"s_\sigma=2.0", L"s_\sigma=3.0"]; colors = [:green, :blue, :red]; scs = [1.0, 2.0, 3.0];
+labels = [L"s_\sigma=0.5", L"s_\sigma=1.0", L"s_\sigma=2.0"]; colors = [:green, :blue, :red]; scs = [0.5, 1.0, 2.0];
 
 ecs_total = [ecosys_config(K=4, S_type=:total, n_scale=sc, ϵ_param=0.0, seed=42) for sc in scs];
 
@@ -16,13 +16,14 @@ vols_total = Vector{Vector{Vector{Float64}}}(undef, 3);
 Random.seed!(345);
 
 for (i, ec) in enumerate(ecs_total)
-    σs = generate_sigma_arrays(ec, 5);
-    vols = Vector{Vector{Float64}}(undef, 5)
+    σs = generate_sigma_arrays(ec, 1);
+    vols = Vector{Vector{Float64}}(undef, 1)
     @info "compute the $(i) config"
-    for (j, σ) in enumerate(σs)
-        p = generate_problem(ec, σ)
-        vols[j] = volume_range_EFD(p, Q_range_t, n_sample=2*10^4)  # this is a Vector
-    end
+    # for (j, σ) in enumerate(σs)
+    j = 1; σ = σs
+    p = generate_problem(ec, σ)
+    vols[j] = volume_range_EFD(p, Q_range_t, n_sample=2*10^4)  # this is a Vector
+    # end
     vols_total[i] = vols
 end
 
@@ -36,7 +37,8 @@ plt_t = plot(
     guidefont=font(6),
     tickfont=font(5),
     legendfont=font(5),
-    size=(225,180),
+    # size=(225,180),
+    size = (400,300),
     legend=(0.8,0.93),
     foreground_color_legend = nothing,
     background_color = :transparent
@@ -54,7 +56,7 @@ for (vols, la, co, sc) in zip(vols_total, labels, colors, scs)
 end
 
 display(plt_t)
-savefig(plt_t, "figures/sigma_total.pdf");
+# savefig(plt_t, "figures/sigma_total.pdf");
 
 # ----- Individual ------
 ecs_indiv = [ecosys_config(K=4, S_type=:indiv, n_scale=sc, ϵ_param=0.0, seed=42) for sc in scs];

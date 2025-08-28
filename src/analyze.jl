@@ -1,7 +1,5 @@
 using LinearAlgebra
 
-# tackle the problem of inf in y
-
 function smooth(x::Vector{Float64}, y::Vector{Float64}, frac::Float64=0.02)
     if length(x) != length(y)
         throw(ArgumentError("x and y must have the same length"))
@@ -11,11 +9,11 @@ function smooth(x::Vector{Float64}, y::Vector{Float64}, frac::Float64=0.02)
     return model
 end
 
-function smooth_curve(x::Vector{Float64}, y::Vector{Float64}, frac::Float64=0.02)
+function smooth_curve(x::Vector{Float64}, y::Vector{Float64}, frac::Float64=0.02; len::Int=1000)
     model = smooth(x, y, frac)
-    xs = range(minimum(x), maximum(x), length=1000)
+    xs = range(minimum(x), maximum(x), length=len)
     ys = predict(model, xs)
-    return xs, ys
+    return Vector(xs), ys
 end
 
 #> may also be extracted before the characterization: just an optimization problem
@@ -40,14 +38,23 @@ function extract_peak(x::Vector{Float64}, y::Vector{Float64}, frac=0.02)
 end
 
 function score_saturation(x::Vector{Float64}, y::Vector{Float64})
-    y[isinf.(y)] .= 0
-    ind = (diff(y).>=0);
-    score_0 = dot(abs.(diff(y)), ind)/sum(abs.(diff(y)))
+    y[isinf.(y)] .= 0.0
+    x, y = smooth_curve(x, y, 0.02, len=length(x))
+
+    initial = Int(floor(length(x) / 2));
+    ind1 = (diff(y).>=0)
+    ind2 = vcat(0,(diff(diff(y)) .<=0))
+    ind2[1:initial] .= 1 # omit the first half
+
+    score_0 = dot(abs.(diff(y)), ind1.*ind2) / sum(abs.(diff(y)))
     return score_0
 end
 
 function score_unimodal(x::Vector{Float64}, y::Vector{Float64})
     y[isinf.(y)] .= 0;
+
+    x, y = smooth_curve(x, y, 0.02, len=length(x))
+
     xi, _ = extract_peak(x, y)
     dy = diff(y); xx = x[2:end]
     ind = ifelse.(dy .>= 0, xx .< xi, xx .> xi)

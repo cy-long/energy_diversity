@@ -4,10 +4,10 @@ using Random, Distributions, LinearAlgebra
 using Plots, ProgressMeter, IterTools
 using LaTeXStrings
 
-labels = ["σ₀=0.1", "σ₀=0.25", "σ₀=0.75", "σ₀=1.0"]; colors = [:green, :blue, :red, :darkorange];
+labels = ["σ₀=0.1", "σ₀=0.25", "σ₀=0.5", "σ₀=0.75", "σ₀=1.0"]; colors = [:green, :blue, :black, :red, :darkorange];
 
-ecs_total = [ecosys_config(K=4, S_type=:total, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.75, 1.0]];
-vols_total = Vector{Vector{Float64}}(undef, 4); 
+ecs_total = [ecosys_config(K=4, S_type=:total, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.5, 0.75, 1.0]];
+vols_total = Vector{Vector{Float64}}(undef, 5); 
 
 Random.seed!(345);
 Q_range_t = vcat(1e-4:0.25:100.0);
@@ -44,8 +44,8 @@ savefig(plt_t, "figures/sigma0_total.pdf");
 
 # ----- Individual Energy Bound -----
 
-ecs_indiv = [ecosys_config(K=4, S_type=:indiv, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.75, 1.0]];
-vols_indiv = Vector{Vector{Float64}}(undef, 4); 
+ecs_indiv = [ecosys_config(K=4, S_type=:indiv, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.5, 0.75, 1.0]];
+vols_indiv = Vector{Vector{Float64}}(undef, 5); 
 
 Random.seed!(345);
 Q_range_i = vcat(1e-4:0.25:1000.0);
