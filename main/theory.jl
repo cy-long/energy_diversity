@@ -1,8 +1,5 @@
 """ Analyze the results in theory """
 
-using Revise
-includet("../src/EnerFeas.jl");
-using .EnerFeas
 using Statistics, StatsPlots, StatsBase, Combinatorics, CategoricalArrays, Distributions
 using DataFrames, Glob, JLD2
 using Plots, Interpolations
@@ -50,23 +47,45 @@ function estimate_function_mean(df::DataFrame; x_range::Tuple, n_points::Int=300
     return xs, log_mean, log_std
 end
 
-results_df = collect_all_results("data/main")
-results_r = results_df[results_df.type .== :total, :];
-results_i = results_df[results_df.type .== :indiv, :];
+function show_single(df::DataFrame, Q_range::Tuple=(1.0,100.0); p_size::Tuple=(160,120), type::String, c_params::Tuple=(1.0, 1.0, 1.0), y_lim::Union{Float64, Nothing}=nothing)
 
-colors = Dict(
-    "r"=> [:lightblue, :dodgerblue, :royalblue, :midnightblue], 
-    "i"=> [:lightsalmon, :darkorange, :orangered, :firebrick]
-);
+    legends = Dict("r"=>(0.11,0.93), "i"=> (0.11,0.32));
+    p_kwargs = Dict(
+        :size => p_size,
+        :framestyle => :box,
+        :xlabel => "Total Energy Supply",
+        :ylabel => labels[type],
+        :grid => false,
+        :xaxis => :log10,
+        :xlim => Q_range,
+        :guidefont => font("Helvetica", 6),
+        :tickfont => font("Helvetica", 5),
+        :legendfont => font("Helvetica", 5),
+        :legend=> legends[type],
+        :foreground_color_legend => nothing,
+        :legend_border => false,
+        :background_color => :transparent,
+        :linewidth => 1.0,
+        :yticks => [0.25,0.75]
+    )
+    if y_lim !== nothing 
+        p_kwargs[:ylim] = (0.0, y_lim)
+    end
+    plt = plot(; p_kwargs...)
 
-labels = Dict(
-    "r" => "Prob. Maturation",
-    "i" => "Prob. Developing",
-);
+    S = 2; cl = colors[type][1]
+    df_S = filter(row -> row.S==S && row.σsc==c_params[1] && row.d0==c_params[2] && row.N0==c_params[3], df);
 
+    if df_S == DataFrame()
+        @warn "No data for S=$(S), σsc=$(c_params[1]), d0=$(c_params[2]), N0=$(c_params[3])"
+        return nothing
+    end
 
-#[1] baseline datatset: S=4, all scale=1; unimodal vs. saturation
-## caveat: 1 std tends to underestimate the variance, is just a way to visualize the uncertainty
+    row =  eachrow(df_S)[25]
+        plot!(plt, row.Qs, row.vols ./ row.devols, alpha=0.5, lw=1.0, color = cl, label="")
+    return plt
+end
+
 function show_group_curves(df::DataFrame, Q_range::Tuple=(1.0,100.0); p_size::Tuple=(240,200), type::String, c_params::Tuple=(1.0, 1.0, 1.0), y_lim::Union{Float64, Nothing}=nothing)
     legends = Dict("r"=>(0.11,0.93), "i"=> (0.11,0.32));
     p_kwargs = Dict(
@@ -140,63 +159,40 @@ function show_inset(df::DataFrame; type::String, c_params::Tuple=(1.0, 1.0, 1.0)
     end
 end
 
+
+results_df = collect_all_results("data/main")
+# @load "data/results_df.jld2" results_df
+
+results_r = results_df[results_df.type .== :total, :];
+results_i = results_df[results_df.type .== :indiv, :];
+
+colors = Dict(
+    "r"=> [:lightblue, :dodgerblue, :royalblue, :midnightblue], 
+    "i"=> [:lightsalmon, :darkorange, :orangered, :firebrick]
+);
+
+labels = Dict(
+    "r" => "Prob. Maturation",
+    "i" => "Prob. Developing",
+);
+
+# --- general patterns --- S=4, all scale=1; unimodal vs. saturation
+## caveat: 1 std tends to underestimate the variance, is just a way to visualize the uncertainty
+
 plt1 = show_group_curves(results_r, type="r")
 # savefig(plt1, "figures/curves_r.svg")
-
 plt1i = show_inset(results_r, type = "r")
 # savefig(plt1i, "figures/inset_r.svg")
 
 plt2 = show_group_curves(results_i, type="i")
 # savefig(plt2, "figures/curves_i.svg")
-
 plt2i = show_inset(results_i, type = "i")
 # savefig(plt2i, "figures/inset_i.svg")
-# savefig(plt2, "figures/curves_i.pdf")
 
+plt3 = show_single(results_r, type="r",y_lim=1.0)
+# savefig(plt3, "figures/methods_r2.svg")
 
-function show_methods(df::DataFrame, Q_range::Tuple=(1.0,100.0); p_size::Tuple=(160,120), type::String, c_params::Tuple=(1.0, 1.0, 1.0), y_lim::Union{Float64, Nothing}=nothing)
-
-    legends = Dict("r"=>(0.11,0.93), "i"=> (0.11,0.32));
-    p_kwargs = Dict(
-        :size => p_size,
-        :framestyle => :box,
-        :xlabel => "Total Energy Supply",
-        :ylabel => labels[type],
-        :grid => false,
-        :xaxis => :log10,
-        :xlim => Q_range,
-        :guidefont => font("Helvetica", 6),
-        :tickfont => font("Helvetica", 5),
-        :legendfont => font("Helvetica", 5),
-        :legend=> legends[type],
-        :foreground_color_legend => nothing,
-        :legend_border => false,
-        :background_color => :transparent,
-        :linewidth => 1.0,
-        :yticks => [0.25,0.75]
-    )
-    if y_lim !== nothing 
-        p_kwargs[:ylim] = (0.0, y_lim)
-    end
-    plt = plot(; p_kwargs...)
-
-    S = 2; cl = colors[type][1]
-    df_S = filter(row -> row.S==S && row.σsc==c_params[1] && row.d0==c_params[2] && row.N0==c_params[3], df);
-
-    if df_S == DataFrame()
-        @warn "No data for S=$(S), σsc=$(c_params[1]), d0=$(c_params[2]), N0=$(c_params[3])"
-        return nothing
-    end
-
-    row =  eachrow(df_S)[25]
-        plot!(plt, row.Qs, row.vols ./ row.devols, alpha=0.5, lw=1.0, color = cl, label="")  # adjust alpha/lw for visibility
-
-    return plt
-end
-
-plt = show_methods(results_r, type="r",y_lim=1.0)
-savefig(plt, "figures/methods_r2.svg")
-
+# --- scores ---
 df = results_r; c_params = (1.0, 1.0, 1.0); 
 Gss = Vector{Vector{Float64}}();
 for S in [2,4,6,8]
@@ -208,16 +204,7 @@ for S in [2,4,6,8]
     end
     push!(Gss, Gs)
 end
-
-for S in [2]
-    i = Int(S/2)
-    df_S = filter(row -> row.S==S && row.σsc==c_params[1] && row.d0==c_params[2] && row.N0==c_params[3], df);
-    Gs = Vector{Float64}();
-    for row in eachrow(df)
-        x = Vector(range(minimum(row.Qs), maximum(row.Qs), length=length(row.Qs)))
-        y = rand(Uniform(0,1), length(row.Qs))
-        push!(Gs, score_saturation(x, y))
-    end
-    push!(Gss, Gs)
-end
-# mean(Gss[2])
+mean(Gss[1])
+mean(Gss[2])
+mean(Gss[3])
+mean(Gss[4])

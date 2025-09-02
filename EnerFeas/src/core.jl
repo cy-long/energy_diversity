@@ -20,7 +20,7 @@ struct InterPolyBalls
     A::Matrix{Float64}
     b::Vector{Float64}
     sps::Vector{Sphere}
-    type::Symbol # :indiv or :total
+    type::Symbol # :linr or :quad
 end
 
 function rand_sphere(sp::Sphere, cut::Float64)
@@ -54,6 +54,35 @@ end
 
 function is_inside_sphere(x::Vector{Float64}, sp::Sphere)
     return norm(x - sp.c) <= sp.r
+end
+
+
+function is_feasible(domain::InterPolyBalls)
+    A=domain.A; b=domain.b; S=size(A,2)
+
+    model = Model()
+    @variable(model, x[i = 1:S])
+    @constraint(model, A * x .<= b)
+    if domain.sps != []
+        for sp in domain.sps
+            @constraint(model, (x-sp.c)' * (x-sp.c) <= sp.r^2)
+        end
+    end
+    @objective(model, Max, 0) # dummy objective
+    set_optimizer(model, SCS.Optimizer); #> handling usage outside this package
+    set_optimizer_attribute(model, "verbose", 0)
+
+    optimize!(model)
+    if termination_status(model) != MOI.OPTIMAL
+        return false
+    end
+    @objective(model, Max, sum(x))
+    optimize!(model)
+    if termination_status(model) == MOI.OPTIMAL
+        return objective_value(model) > 1e-9
+    else
+        return false
+    end
 end
 
 function chevball(domain::InterPolyBalls)
@@ -153,14 +182,14 @@ function volume_domain(domain::InterPolyBalls, N::Int=10, eN::Int=1, exact::Bool
     end
 
     # create and sandwhich the domain
-    if domain.type == :indiv
+    if domain.type == :linr
         po = polyhedron(hrep(domain.A, domain.b))
         if exact
             return Polyhedra.volume(po)
         end
         vertices = points(po)
         ρ = maximum([norm(v-chev.c) for v in vertices])
-    elseif domain.type == :total
+    elseif domain.type == :quad
         sp0 = domain.sps[1]
         samples_0 = hr_sample(domain, 1, 10000, chev)
         ρ = maximum([norm(x-chev.c) for x in samples_0]) # slightly dumb way to sandwhich the domain
@@ -170,10 +199,10 @@ function volume_domain(domain::InterPolyBalls, N::Int=10, eN::Int=1, exact::Bool
     r_phs = [r*(ρ/r)^(k/N) for k in 0:(N+eN)]
     sp_phs = [Sphere(chev.c, r_ph) for r_ph in r_phs]
 
-    if domain.type == :indiv 
-        regions = [InterPolyBalls(domain.A, domain.b, [sp], :indiv) for sp in sp_phs]
-    elseif domain.type == :total
-        regions = [InterPolyBalls(domain.A, domain.b, [sp0, sp], :total) for sp in sp_phs]
+    if domain.type == :linr 
+        regions = [InterPolyBalls(domain.A, domain.b, [sp], :linr) for sp in sp_phs]
+    elseif domain.type == :quad
+        regions = [InterPolyBalls(domain.A, domain.b, [sp0, sp], :quad) for sp in sp_phs]
     end
 
     # perform multiphase Monte Carlo sampling

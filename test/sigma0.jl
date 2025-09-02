@@ -1,12 +1,13 @@
-include("../src/EnerFeas.jl");
-using .EnerFeas
+
+using EnerFeas
 using Random, Distributions, LinearAlgebra
 using Plots, ProgressMeter, IterTools
 using LaTeXStrings
 
-labels = ["σ₀=0.1", "σ₀=0.25", "σ₀=0.5", "σ₀=0.75", "σ₀=1.0"]; colors = [:green, :blue, :black, :red, :darkorange];
+labels = ["σ₀=0.1", "σ₀=0.25", "σ₀=0.5", "σ₀=0.75", "σ₀=1.0"];
+colors = [:green, :blue, :black, :red, :darkorange];
 
-ecs_total = [ecosys_config(K=4, S_type=:total, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.5, 0.75, 1.0]];
+ecs = [ecosys_config(4, σ0=s, seed=42) for s in [0.1, 0.25, 0.5, 0.75, 1.0]];
 vols_total = Vector{Vector{Float64}}(undef, 5); 
 
 Random.seed!(345);
@@ -14,8 +15,8 @@ Q_range_t = vcat(1e-4:0.25:100.0);
 for (i, ec) in enumerate(ecs_total)
     @info "compute the $(i) config"
     σ = generate_sigma_arrays(ec, 1);
-    p = generate_problem(ec, σ)
-    vols_total[i] = volume_range_EFD(p, Q_range_t, n_sample=2*10^4)
+    p = generate_model_system(ec, σ)
+    vols_total[i] = volume_range_EFD(p, :matr, Q_range_t, n_sample=2*10^4)
 end
 
 devols_t = [Q^4/factorial(4) for Q in Q_range_t];
@@ -44,16 +45,15 @@ savefig(plt_t, "figures/sigma0_total.pdf");
 
 # ----- Individual Energy Bound -----
 
-ecs_indiv = [ecosys_config(K=4, S_type=:indiv, ϵ_param=0.0, seed=42, σ0=a) for a in [0.1, 0.25, 0.5, 0.75, 1.0]];
 vols_indiv = Vector{Vector{Float64}}(undef, 5); 
 
 Random.seed!(345);
 Q_range_i = vcat(1e-4:0.25:1000.0);
-for (i, ec) in enumerate(ecs_indiv)
+for (i, ec) in enumerate(ecs)
     @info "compute the $(i) config"
     σ = generate_sigma_arrays(ec, 1);
-    p = generate_problem(ec, σ)
-    vols_indiv[i] = volume_range_EFD(p, Q_range_i)
+    p = generate_model_system(ec, σ)
+    vols_indiv[i] = volume_range_EFD(p, :init, Q_range_i)
 end
 
 devols_i = [Q^4/factorial(4) for Q in Q_range_i];
@@ -82,43 +82,3 @@ savefig(plt_i, "figures/sigma0_indiv.pdf");
 
 using JLD2
 @save "data/sensitivity/sigma0.jld" ecs_total ecs_indiv Q_range_t Q_range_i vols_total vols_indiv
-
-# Let's then understand the relationship between σ0 and self-regulation
-# using LinearAlgebra
-# using Plots
-
-N = 20000; K = 4; n_var = 1.0;
-As = [rand(Normal(0, n_var),K, K) for _ in 1:N];
-Ps = [(a + a') / 2 for a in As];
-cs = [-minimum(eigvals(p), init=0.0) for p in Ps];
-# historgram of cs
-using StatsBase
-histogram(cs, bins=100, xlabel="Minimum Eigenvalue", ylabel="Frequency", normalize=true)
-
-
-# plt = plot(aspect_ratio = :equal)
-# σ0s = [0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.25];
-
-# for σ0 in σ0s
-#     Random.seed!(10);
-#     σ = rand(Normal(0,3.0), 2, 2);
-#     # c = minimum(eigvals((σ + σ') / 2), init=0.0)
-#     σ[diagind(σ)] .+= σ0;
-
-#     Λ = inv(σ);
-#     P = (Λ + Λ') / 2
-
-#     # visualize the ellipsoid
-#     L = Matrix(cholesky(P).U);
-#     pts = [[cos.(θ),sin.(θ)] for θ in 0:0.05:2π];
-#     pts = [inv(L) * pt for pt in pts];
-
-#     plot!(plt, [p[1] for p in pts], [p[2] for p in pts], alpha=0.35, linewidth=3, label=@sprintf("σ0=%.2f", σ0))
-# end
-
-# display(plt)
-
-# rms = [randn(10,10) for _ in 1:100000]
-# eigs = [eigvals((a+a')/2) for a in rms]
-# eigmins = [minimum(e) for e in eigs]
-# histogram(eigmins, bins=100, xlabel="Eigenvalues", ylabel="Frequency", title="Min Eigvals of random symmetric mats")

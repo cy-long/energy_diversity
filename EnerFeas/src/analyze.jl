@@ -1,5 +1,4 @@
-using LinearAlgebra
-
+# --- functional data analysis (after) --- 
 function smooth(x::Vector{Float64}, y::Vector{Float64}, frac::Float64=0.02)
     if length(x) != length(y)
         throw(ArgumentError("x and y must have the same length"))
@@ -62,41 +61,29 @@ function score_unimodal(x::Vector{Float64}, y::Vector{Float64})
     return score_1
 end
 
-function critical_energy(p::EnergyConstrProb)
-    model = Model()
-    @variable(model, s[i = 1:p.K]>=0)
-    @variable(model, Qc >= 0)
+# --- estimations of typical Q (before) ---
 
-    A = -vcat(I, p.Λ, -p.N⁰')
-    b = -vcat(zeros(p.K), p.ϵ .* p.N⁰ - p.c, -Qc)
-    @constraint(model, A*s .<= b)
-
-    if p.type == :total
-        @constraint(model, s'*p.Q*s + p.c'*s <= Qc)
-    end
-
-    @objective(model, Min, Qc)
-    set_optimizer(model, SCS.Optimizer);
-    set_optimizer_attribute(model, "verbose", 0)
-    optimize!(model)
-    if termination_status(model) != MOI.OPTIMAL
-        return false
-    else 
-        return objective_value(model), value.(s)
-    end
-end
-
-function optimal_supply(p::EnergyConstrProb)
-    itp = translate_EFD(p)
-    A = p.N⁰' * itp.invL * itp.yc;
-    B = sqrt(p.N⁰' *inv(p.Q)* p.N⁰);
-    C = 0.25 * p.c' * inv(p.Q) * p.c;
+#> carefully test!!
+function optimal_supply(p::EcosysParams)
+    tp = translate_EFD(p, :matr) # include quadratic constraint
+    A = p.N⁰' * (tp.cholP.U \ tp.yc);
+    B = sqrt(p.N⁰' * (tp.P \ p.N⁰));
+    C = 0.25 * tp.c' * (tp.P \ tp.c);
     B2 = B^2
     return A + B2/2 + sqrt((2*A + B2)^2 - 4*(A^2-B2*C))/2
 end
 
-# Calculate the baseline supply needed to sustain the ecosystem with least biomass
-baseline_supply(p::EnergyConstrProb) = dot(p.d + p.σ * (p.ϵ .* p.N⁰), p.N⁰)
+function baseline_supply(p::EcosysParams)
+    return dot(p.d + p.σ * (p.ϵ .* p.N⁰), p.N⁰)
+end
 
-# Calculate the total supply at state s (weighed by N)
-total_supply(s::Vector{Float64}, p::EnergyConstrProb) = transpose(s) * p.Λ * (s - p.d)
+function select_range(p::EcosysParams)
+    Q0 = baseline_supply(p)
+    Q1 = optimal_supply(p)
+    Q_range = vcat(
+        exp.(range(log(1e-4), log(Q0); length=25)),            # before critical
+        exp.(range(log(Q0), log(Q1); length=351)[2:end]),     # around optimum
+        exp.(range(log(Q1), log(max(10Q1, 100.0)); length=126)[2:end])  # tail
+    )
+    return Q_range
+end

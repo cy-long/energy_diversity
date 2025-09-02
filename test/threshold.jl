@@ -1,5 +1,6 @@
-include("../src/EnerFeas.jl");
-using .EnerFeas
+
+using Revise
+using EnerFeas
 using Random, Distributions, LinearAlgebra
 using Plots, ProgressMeter, IterTools
 using LaTeXStrings
@@ -7,20 +8,20 @@ using LaTeXStrings
 labels = ["ϵ=0","ϵ=10⁻³","ϵ=10⁻¹"]; colors = [:green, :blue, :red]; thres = [0.0, 0.001, 0.1];
 
 # ----- Total Energy Bound -----
-ecs_total = [ecosys_config(K=4, S_type=:total, ϵ_param=ϵ, seed=42) for ϵ in thres];
+ecs = [ecosys_config(4, ϵ=e, seed=42) for e in thres];
 Q_range_t = vcat(1e-4:0.1:10, 10.25:0.3:100.0);
 
 vols_total = Vector{Vector{Vector{Float64}}}(undef, 3); 
 Random.seed!(345);
 
-for (i, ec) in enumerate(ecs_total)
+for (i, ec) in enumerate(ecs)
     if i > 2 continue end  # skip the first one, which is the baseline
     σs = generate_sigma_arrays(ec, 5);
     vols = Vector{Vector{Float64}}(undef, 5)
     @info "compute the $(i) config"
     for (j, σ) in enumerate(σs)
-        p = generate_problem(ec, σ)
-        vols[j] = volume_range_EFD(p, Q_range_t, n_sample=2*10^4)
+        p = generate_model_system(ec, σ)
+        vols[j] = volume_range_EFD(p, :matr, Q_range_t, n_sample=2*10^4)
     end
     vols_total[i] = vols
 end
@@ -58,18 +59,17 @@ savefig(plt_t, "figures/thre_total.pdf");
 
 
 # ----- Individual Energy Bound -----
-ecs_indiv = [ecosys_config(K=4, S_type=:indiv, ϵ_param=ϵ, seed=42) for ϵ in thres];
 Q_range_i = vcat(1e-4:0.1:100.0, 100.0:1.0:1000.0);
 vols_indiv = Vector{Vector{Vector{Float64}}}(undef, 3);
 Random.seed!(345);
 
-for (i, ec) in enumerate(ecs_indiv)
+for (i, ec) in enumerate(ecs)
     σs = generate_sigma_arrays(ec, 5);
     vols = Vector{Vector{Float64}}(undef, 5)
     @info "compute the $(i) config"
     for (j, σ) in enumerate(σs)
-        p = generate_problem(ec, σ)
-        vols[j] = volume_range_EFD(p, Q_range_i, n_sample=2*10^4)
+        p = generate_model_system(ec, σ)
+        vols[j] = volume_range_EFD(p, :init, Q_range_i, n_sample=2*10^4)
     end
     vols_indiv[i] = vols
 end

@@ -1,0 +1,32 @@
+name = "EnerFeas"
+uuid = "7c1cc5a2-91b2-4f4d-9d1f-87ead758204a"
+authors = ["Chengyi Long <79570794+cy-long@users.noreply.github.com>"]
+version = "0.1.0"
+
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Loess = "4345ca2d-374a-55d4-8d30-97f9976e7612"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Polyhedra = "67491407-f73d-577b-9b50-8179a7c68029"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
+QHull = "a8468747-bd6f-53ef-9e5c-744dbc5c59e7"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SCS = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+
+[compat]
+Distributions = "0.25.120"
+JuMP = "1.29.0"
+LinearAlgebra = "1.11.0"
+Loess = "0.6.4"
+Plots = "1.40.19"
+Polyhedra = "0.8.1"
+Printf = "1.11.0"
+ProgressMeter = "1.11.0"
+QHull = "0.2.6"
+Random = "1.11.0"
+SCS = "2.1.0"
+SpecialFunctions = "2.5.1"

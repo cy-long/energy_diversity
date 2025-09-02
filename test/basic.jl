@@ -1,139 +1,33 @@
-""" Mainly for 2D visualization, help to understand how the geometry works and validate if the backend did the right thing and the interface correctly translate the problems"""
+""" Basic tests for EnerFeas.jl """
 
-function show_chevball(p::EnergyConstrProb, go_back::Bool=true)
-    # !(p.K==2) && throw(ErrorException("can only show 2D"))
-    itp = translate_EFD(p)
-    if p.type == :indiv
-        domain = InterPolyBalls(itp.A, itp.b, [], :indiv)
-    elseif p.type == :total
-        sp0 = Sphere(itp.yc, sqrt(itp.t))
-        domain = InterPolyBalls(itp.A, itp.b, [sp0], :total)
-    end
-    sp = chevball(domain)
-    
-    color_sp = "orange"
-    θ = 0:0.001:2π
-    x = sp.c[1] .+ sp.r * cos.(θ)
-    y = sp.c[2] .+ sp.r * sin.(θ)
-    
-    if go_back 
-        color_sp = "cyan"
-        x = itp.invL[1,1] * x .+ itp.invL[1,2] * y
-        y = itp.invL[2,1] * x .+ itp.invL[2,2] * y
-    end
-
-    plot!(x, y, color=color_sp, linewidth=3)
-end
-
-
-function show_linear(
-    p::Union{EnergyConstrProb,Nothing}=nothing,
-    samples::Union{Vector{Vector{Float64}}, Nothing}=nothing,
-)
-    go_back = true # temporarily always plot in s-space
-    go_back ? color_pts = "blue" : color_pts = "orange"
-
-    # !isnothing(p) && plot!(create_poly(p), alpha=0.25, color="red")
-    # !isnothing(p) && plot_sphere()
-
-    !isnothing(p) && plot!(project(create_poly(p), [1,2]), alpha=0.35, color="purple", linewidth=3)
-    !isnothing(samples) && scatter!(
-        [s[1] for s in samples], [s[2] for s in samples], 
-        color=color_pts, markersize=1.5, markerstrokewidth=0, ratio=1
-    )
-end
-
-function show_quadratic(
-    p::Union{EnergyConstrProb,Nothing}=nothing,
-    samples::Union{Vector{Vector{Float64}}, Nothing}=nothing,
-)
-    go_back = true # temporarily always plot in s-space
-    go_back ? color_pts = "blue" : color_pts = "orange"
-    
-    plt = plot()
-    !isnothing(samples) && scatter!(
-        plt,
-        [s[1] for s in samples], [s[2] for s in samples], 
-        color=color_pts, markersize=1.5, markerstrokewidth=0, ratio=1
-    )
-    return plt
-end
-
-
-function grow_quadratic(
-    p0::Union{EnergyConstrProb,Nothing}=nothing,
-    St::Float64=p0.S,
-    plt=nothing
-)
-    if plt === nothing
-        plt = plot()  # Create new plot if none provided
-    end
-
-    go_back = false
-    color_line = go_back ? "blue" : "orange"
-
-    p0.S = St
-
-    L = cholesky(p0.Q).U; invL = inv(L)
-    A = -vcat(I, p0.Λ) * invL
-    b = -vcat(zeros(p0.K), p0.N⁰ - p0.c)
-    yc = -0.5 * invL' * p0.c
-    t = St + 0.25 * p0.c' * inv(p0.Q) * p0.c
-
-    θ = 0:0.001:2π
-    x_sp = yc[1] .+ sqrt(t) * cos.(θ)
-    y_sp = yc[2] .+ sqrt(t) * sin.(θ)
-    
-    if go_back 
-        x_sp_tmp = invL[1,1] * x_sp .+ invL[1,2] * y_sp
-        y_sp = invL[2,1] * x_sp .+ invL[2,2] * y_sp
-        x_sp = x_sp_tmp
-    end
-
-    plot!(plt, x_sp, y_sp, color=color_line, linewidth=3)
-
-    samples = sample_EFD(p0, 1000, go_back)
-    scatter!(
-        plt,
-        [s[1] for s in samples], [s[2] for s in samples], 
-        color=color_line, markersize=1.5, markerstrokewidth=0, ratio=1
-    )
-
-    return plt
-end
-
-""" Test basic functionality """
-
-
-
-include("../src/EnerFeas.jl")
-using .EnerFeas
+using EnerFeas
 using Random, Distributions, LinearAlgebra, Plots
 
-#1 sampling linear constraint domain
-ec1 = ecosys_config(K=3, S_type=:indiv, seed=24, N0_param=0.2);
-σ1 = generate_sigma_arrays(ec1, 1);
-p1 = generate_problem(ec1, σ1); p1.S = 7.5;
+#1 sampling initialization domain (a polyhedron)
+p = generate_model_system(2, 24, 1.0, 1.25, 1.5; d_sd=0.1, σ0 = 0.125);
+p.Q = 10.0;
+check_feasible_EFD(p, :init)
+tp = translate_EFD(p, :init);
+samps = sample_EFD(tp, n_sample=10^4);
+samps1 = sample_EFD(p, :init; n_sample=10^4);
 
-check_feasible_EFD(p1)
-samples1 = sample_EFD(p1, 15000);
-
-plot(ratio=1)
-show_linear(p1, samples1)
-show_chevball(p1)
+plt_1 = plot(size=(300,300));
+scatter!(plt_1, [s[1] for s in samps], [s[2] for s in samps], label="TransParams", markerstrokecolor=:auto);
+scatter!(plt_1, [s[1] for s in samps1], [s[2] for s in samps1], label="Direct", alpha=0.5, color=:orange, markerstrokecolor=:auto);
+display(plt_1)
 
 #2 sampling quadratic constraint domain
-ec2 = ecosys_config(K=2, S_type=:total, seed=12);
-σ2 = generate_sigma_arrays(ec2, 1);
-p2 = generate_problem(ec2, σ2); p2.S = 6.0;
+check_feasible_EFD(p, :matr)
+tp = translate_EFD(p, :matr);
+samps = sample_EFD(tp, n_sample=10^4);
 
-samples2 = sample_EFD(p2, 15000);
-plot(ratio=1)
-show_quadratic(p2, samples2)
+plt_2 = plot(size=(300,300));
+scatter!(plt_2, [s[1] for s in samps], [s[2] for s in samps], label="TransParams", markerstrokecolor=:auto);
+display(plt_2)
 
-#3 linear volume estimation (analytical and numerical)
-volume_EFD(p1, true, 10, 1)
-volume_EFD(p1, false, 10, 1)
 
-#4 quadratic volume estimation (numerical only)
-volume_EFD(p2, false, 10, 1)
+#3 volume estimations
+volume_EFD(p, :init; exact=true)
+volume_EFD(p, :matr)
+Q_range = vcat(1.0:0.25:12.0);
+vols = volume_range_EFD(p, :matr, Q_range)

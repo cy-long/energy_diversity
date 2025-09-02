@@ -1,7 +1,7 @@
-"""Verify the volume calculation, test for best hyperparameters (such as n_sample), with changing K"""
+"""Validate the volume estimation for different dimensions"""
 
-include("../src/EnerFeas.jl");
-using .EnerFeas
+using Revise
+using EnerFeas
 using Random, Distributions, LinearAlgebra
 using ProgressMeter, Plots, SpecialFunctions
 
@@ -22,7 +22,7 @@ for K in K_range
 
     A = -Matrix{Float64}(I, (K, K));
     b = zeros(K);
-    regions = [InterPolyBalls(A, b, [Sphere(zeros(K), r)], :total) for r in r_range];
+    regions = [InterPolyBalls(A, b, [Sphere(zeros(K), r)], :quad) for r in r_range];
 
     vol_samp_K = zeros(Float64, length(regions))
     @showprogress for (i, reg) in pairs(regions)
