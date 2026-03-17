@@ -34,3 +34,5 @@ data/**
 logs/**
 logs.*/**
 submit.sh
+statprof/*
+

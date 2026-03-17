@@ -27,8 +27,7 @@ class GeometryCalculator:
     def get_initialization_domain_polygon(self):
         vertices = [self.d]
         numerator = self.Q_energy - np.dot(self.N0, self.d)
-        
-        # 计算射线与 N0.s = Q 的交点
+
         intersections = []
         for i in range(2):
             v = self.sigma[:, i]

@@ -2,7 +2,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from helper import estimate_function_mean
+from main.helper import estimate_function_mean
 
 
 target_lw = 0.5
