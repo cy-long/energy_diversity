@@ -1,8 +1,8 @@
 """ Analyze the results in theory """
 
-using Statistics, StatsBase, Combinatorics, CategoricalArrays, Distributions
+using EnerFeas
+using Statistics
 using DataFrames, Glob, JLD2
-using Plots, Interpolations
 using JSON
 
 function collect_all_results(dir::String)
@@ -32,7 +32,7 @@ results_df = collect_all_results("data/main")
 function clean_row(row)
     return Dict(
         "S" => Int(row.S),
-        "type" => String(row.type), # "total" (r) or "indiv" (i)
+        "type" => String(row.type),
         "Qs" => row.Qs,
         "y"  => row.vols ./ row.devols 
     )
@@ -40,11 +40,11 @@ end
 
 c_params = (1.0, 1.0, 1.0);
 filter_cond(row) = row.σsc == c_params[1] && row.d0 == c_params[2] && row.N0 == c_params[3]
-df_matr = filter(row -> filter_cond(row) && row.type == :total && row.S in [2,4,6,8], results_df)
-df_init = filter(row -> filter_cond(row) && row.type == :indiv && row.S in [2,4,6,8], results_df)
+df_matr = filter(row -> filter_cond(row) && row.type == :matr && row.S in [2,4,6,8], results_df)
+df_init = filter(row -> filter_cond(row) && row.type == :init && row.S in [2,4,6,8], results_df)
 data_matr = [clean_row(r) for r in eachrow(df_matr)];
 data_init = [clean_row(r) for r in eachrow(df_init)];
-df_single_pool = filter(row -> filter_cond(row) && row.type == :total && row.S == 2, results_df);
+df_single_pool = filter(row -> filter_cond(row) && row.type == :matr && row.S == 2, results_df);
 single_traj = isempty(df_single_pool) ? nothing : clean_row(eachrow(df_single_pool)[min(25, nrow(df_single_pool))]);
 
 final_export = Dict(
@@ -58,19 +58,18 @@ open("data/output/fig3_data.json", "w") do f
 end
 
 
-df = results_r; c_params = (1.0, 1.0, 1.0); 
-Gss = Vector{Vector{Float64}}();
-for S in [2,4,6,8]
-    i = Int(S/2)
-    df_S = filter(row -> row.S==S && row.σsc==c_params[1] && row.d0==c_params[2] && row.N0==c_params[3], df);
-    Gs = Vector{Float64}();
-    for row in eachrow(df_S)
-        push!(Gs, score_unimodal(row.Qs, row.vols ./ row.devols))
-    end
-    push!(Gss, Gs)
-end
+# df = results_df
+# Gss = Vector{Vector{Float64}}();
+# for S in [2,4,6,8]
+#     df_S = filter(row -> row.S==S && row.σsc==c_params[1] && row.d0==c_params[2] && row.N0==c_params[3], df);
+#     Gs = Vector{Float64}();
+#     for row in eachrow(df_S)
+#         push!(Gs, score_unimodal(row.Qs, row.vols ./ row.devols))
+#     end
+#     push!(Gss, Gs)
+# end
 
-mean(Gss[1])
-mean(Gss[2])
-mean(Gss[3])
-mean(Gss[4])
+# mean(Gss[1])
+# mean(Gss[2])
+# mean(Gss[3])
+# mean(Gss[4])

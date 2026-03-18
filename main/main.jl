@@ -12,7 +12,7 @@ using Random, Plots, JLD2
 using ProgressMeter
 
 seed = length(ARGS) ≥ 1 ? parse(Int, ARGS[1]) : 123;
-TEST_MODE = true;
+TEST_MODE = "--test" in ARGS;
 
 # single model system test
 if TEST_MODE
@@ -54,7 +54,7 @@ function run_main(seed)
             ))
             counter += 1;
             if TEST_MODE && counter > 2
-                @info "Test mode: stopping after 10 cases"
+                @info "Test mode: stopping after 2 cases"
                 return results;
             end
         end
