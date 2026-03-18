@@ -154,7 +154,7 @@ function build_system_partition_block(
     )
 end
 
-function build_seed_partition_survey(
+function build_seed_partition_run(
     seed::Int;
     S_range::Vector{Int}=[2, 4, 6, 8],
     σsc::Float64=1.0,

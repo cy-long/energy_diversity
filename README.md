@@ -7,12 +7,13 @@ This repository contains the Julia code for the paper: *Energetic Constraints de
 This project requires Julia ≥ 1.10. Download and install Julia from the [here](https://julialang.org/install/).
 
 ### 2. Set up dependencies
-The scripts depend on the [EnerFeas](https://github.com/cy-long/EnerFeas.jl) package. Its Git source and compatible revision are declared directly in the root `Project.toml`, so activating this environment and instantiating it is sufficient.
+The scripts depend on the [EnerFeas](https://github.com/cy-long/EnerFeas.jl) package, which is not registered in Julia's default registry. On Julia 1.10, add `EnerFeas` from GitHub first, then instantiate the rest of the environment.
 
 In the Julia environment at the root directory, run the following command:
 ```julia
 using Pkg
 Pkg.activate(".")
+Pkg.add(url="https://github.com/cy-long/EnerFeas.jl", rev="v0.3.0")
 Pkg.instantiate()
 ```
 This will install the correct `EnerFeas` version together with the other dependencies for the local environment.

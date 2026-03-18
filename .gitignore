@@ -33,6 +33,6 @@ figures/**
 data/**
 logs/**
 logs.*/**
-submit.sh
+*.sh
 statprof/*
 
