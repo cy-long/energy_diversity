@@ -1,6 +1,5 @@
-""" Analyze the results in theory """
+""" Analyze theoretical results, preparing for Fig.3 """
 
-using EnerFeas
 using Statistics
 using DataFrames, Glob, JLD2
 using JSON

@@ -92,12 +92,9 @@ def make_grid_figure(json_path):
                     ax.set_yticks(config['yticks'])
                 if config['ylim']:
                     ax.set_ylim(config['ylim'])
-
-
     fig.supxlabel(r"Total Energy Supply ($Q$)", fontsize=8)
-
     fig.align_ylabels(axes[:, 0])
-    fig.savefig("figure3_grid_layout_v2.pdf")
+    fig.savefig("figures/Figure3.pdf")
     plt.show()
 
 if __name__ == "__main__":

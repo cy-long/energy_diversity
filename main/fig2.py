@@ -239,16 +239,14 @@ gs = fig.add_gridspec(2, 2, height_ratios=[1.2, 1])
 
 ax1 = fig.add_subplot(gs[0, 0])
 plot_exact_geometry(ax1, Q_val=7)
-# ax1.set_title("A", loc='left', fontweight='bold') # Add panel label
 add_legend_A(ax1)
 
 ax2 = fig.add_subplot(gs[0, 1])
 plot_exact_geometry(ax2, Q_val=15)
-# ax2.set_title("B", loc='left', fontweight='bold') # Add panel label
 add_legend_B(ax2)
 
 ax3 = fig.add_subplot(gs[1, :])
 plot_result_curve(ax3)
 
-plt.savefig("figures/fig2-example.pdf", dpi=300)
+plt.savefig("figures/Figure2.pdf", dpi=300)
 plt.show()

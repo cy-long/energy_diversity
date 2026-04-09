@@ -262,7 +262,7 @@ function plot_prob_maturation_curves(data; empty_name::String="∅")
     plot!(plt, data.Q_range, pm.pm_nonempty;
         label="non-$empty_name", linewidth=2, color=:black)
     xlabel!(plt, "Q")
-    ylabel!(plt, "Pᴹ")
+    ylabel!(plt, "Pₘ")
     xlims!(plt, (data.Q_range[1], data.Q_range[end]))
     ylims!(plt, (0.0, 1.0))
     xaxis!(plt, :log10)
