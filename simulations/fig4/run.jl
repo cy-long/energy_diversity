@@ -1,10 +1,9 @@
+""" HPC script: compute feasibility partition volumes across S={2,4,6,8} for a given seed. """
+
 using JLD2
 
-include("helper.jl")
-
-function parse_arg(args::Vector{String}, idx::Int, default, ::Type{T}) where {T}
-    return length(args) >= idx ? parse(T, args[idx]) : default
-end
+include(joinpath(@__DIR__, "..", "helper.jl"))
+include(joinpath(@__DIR__, "..", "partition.jl"))
 
 seed = parse_arg(ARGS, 1, 1, Int)
 σsc = parse_arg(ARGS, 2, 1.0, Float64)
@@ -16,19 +15,8 @@ n_layer = parse_arg(ARGS, 7, 10, Int)
 show_prog = parse_arg(ARGS, 8, 1, Int) != 0
 outdir = length(ARGS) >= 9 ? ARGS[9] : "data/revision"
 
-function unique_outfile(outdir::AbstractString, seed::Int)
-    base = joinpath(outdir, "partition_seed$(seed)")
-    outfile = base * ".jld2"
-    k = 1
-    while isfile(outfile)
-        outfile = base * "_$(k).jld2"
-        k += 1
-    end
-    return outfile
-end
-
 mkpath(outdir)
-outfile = unique_outfile(outdir, seed)
+outfile = unique_outfile(outdir, "partition", seed)
 
 @info "Building partition run" seed σsc d0 N0 sampling_chains n_sample n_layer outfile
 results = build_seed_partition_run(

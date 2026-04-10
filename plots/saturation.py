@@ -2,8 +2,10 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
-from main.helper import estimate_function_mean
 
+import sys, os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+from helper import estimate_function_mean
 
 target_lw = 0.5
 draw_insect = False

@@ -36,3 +36,5 @@ logs.*/**
 *.sh
 statprof/*
 
+__pycache__/
+.claude/

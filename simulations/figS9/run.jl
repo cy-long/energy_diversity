@@ -1,24 +1,9 @@
-""" Sensitivity of connectance on PM """
+""" HPC script: sensitivity analysis on connectance of sigma matrix (Figure S9, SI). """
 
 using EnerFeas
 using JLD2
 
-# ARGS: seed [sampling_chains] [n_sample] [n_layer] [show_prog] [outdir]
-
-function parse_arg(args::Vector{String}, idx::Int, default, ::Type{T}) where {T}
-    return length(args) >= idx ? parse(T, args[idx]) : default
-end
-
-function unique_outfile(outdir::AbstractString, seed::Int)
-    base = joinpath(outdir, "connectance_seed$(seed)")
-    outfile = base * ".jld2"
-    k = 1
-    while isfile(outfile)
-        outfile = base * "_$(k).jld2"
-        k += 1
-    end
-    return outfile
-end
+include(joinpath(@__DIR__, "..", "helper.jl"))
 
 seed = parse_arg(ARGS, 1, 1, Int)
 sampling_chains = parse_arg(ARGS, 2, 2, Int)
@@ -31,7 +16,7 @@ c_values = [1.0, 0.8, 0.6, 0.4, 0.2]
 S = 8
 
 mkpath(outdir)
-outfile = unique_outfile(outdir, seed)
+outfile = unique_outfile(outdir, "connectance", seed)
 @info "Running connectance sweep" seed outfile
 
 results = Vector{Dict}()
@@ -47,8 +32,8 @@ for c in c_values
     push!(results, Dict(
         :c => c, :S => S, :seed => seed,
         :Qs => Q_range, :vols_C => vols_C,
-        :vols_matr => vols_matr, 
-        :pm => vols_matr ./ vols_C, 
+        :vols_matr => vols_matr,
+        :pm => vols_matr ./ vols_C,
     ))
 end
 

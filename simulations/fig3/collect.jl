@@ -1,4 +1,4 @@
-""" Analyze theoretical results, preparing for Fig.3 """
+""" Collect main survey results across seeds and export data for Fig. 3 plotting. """
 
 using Statistics
 using DataFrames, Glob, JLD2
