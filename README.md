@@ -1,6 +1,6 @@
 energy_diversity
 ====
-Code for the paper: *Energetic Constraints Shape the Diversity of Feasible Ecological Systems*
+Code for the paper: *Energetic Constraints Shape the Diversity of Feasible Ecological Networks*
 
 ## Setup
 
