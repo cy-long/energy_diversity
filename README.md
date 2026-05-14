@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/940171603.svg)](https://doi.org/10.5281/zenodo.20185062)
+
 energy_diversity
 ====
 Code for the paper: *Energetic Constraints Shape the Diversity of Feasible Ecological Networks*
